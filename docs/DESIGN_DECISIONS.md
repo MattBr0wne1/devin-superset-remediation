@@ -4,19 +4,33 @@ The brief was a **simple but reliable** event-driven workflow where observabilit
 is key. Every decision below is weighed against that: does it make the core
 workflow more reliable or more observable? If not, it was cut.
 
-## 1. One trigger: a labeled issue → webhook
+## 1. One trigger (a `devin-fix` label), two transports: pull + push
 
 **Decision:** A single logical trigger — adding the `devin-fix` label to an issue —
-delivered to one FastAPI webhook, which calls one dispatcher function.
+reaches the dispatcher two ways: a **pull** scanner that polls the repo for
+labeled issues (default), and a **push** webhook that receives GitHub's
+`issues.labeled` event. Both call the same `handle_labeled_issue`.
 
-**Why:** A single, well-understood path is easier to reason about and to trust
-than several partially-overlapping ones. The dispatcher
-(`handle_labeled_issue`) takes a plain issue dict, so other sources (a scanner, a
-cron job, a CLI replay) can reuse it without adding new core logic.
+**Why two transports, not "several triggers":** it's still one event (the label)
+and one handler; the transports differ only in *who initiates delivery*. The pull
+scanner needs no public URL, so the whole system runs and demos from local Docker
+— label an issue on GitHub and it's picked up on the next scan. The webhook is the
+production "instant" path but requires the service to be publicly reachable and a
+hook registered on the repo (which the Devin GitHub App can't self-register). The
+pull path removes that setup entirely, which matters for a self-contained demo.
 
-**Cut:** A second, redundant **GitHub Actions** transport for the same event. It
-delivered the same payload to the same handler — extra surface area, no new
-capability. The CLI remains as a plain ops/replay tool, not a second trigger.
+The scanner is idempotent by reusing the same dispatch guard: it lists labeled
+issues, skips any with an existing `Run`, and dispatches the rest — so a label
+toggled repeatedly, or both transports firing, never spawns a duplicate session.
+Gated by `LABEL_SCAN_ENABLED` (set `false` to rely solely on the webhook).
+
+**Why the dispatcher stays transport-agnostic:** it takes a plain issue dict, so
+any source (the scanner, the webhook, a cron job, a CLI replay, a Snyk/Dependabot
+scan) reuses it with no new core logic.
+
+**Cut:** A second, redundant **GitHub Actions** transport for the same event — it
+delivered the same payload to the same handler, so it was extra surface area with
+no new capability. The CLI (`scan` / `dispatch`) remains a plain ops/replay tool.
 
 ## 2. Verify before opening the PR (the point of the system)
 
@@ -161,5 +175,9 @@ reject forged deliveries.
   fail after an hour; a long-lived PAT fixes this. PR discovery via the Devin API
   is unaffected.
 - **Single instance** by design (local SQLite); multi-replica needs a shared DB.
-- **The Devin GitHub App can't register webhooks** (missing admin permission);
-  register the hook manually or use a PAT / the CLI path.
+- **The Devin GitHub App can't register webhooks** (missing admin permission).
+  This is why the **pull scanner is the default** — it needs no hook and no public
+  URL. Register a hook manually only if you want the instant push path.
+- **The label scanner polls** (default 60s), so the pull path adds up-to-one-
+  interval of latency vs. the push webhook — a deliberate trade of immediacy for
+  zero-setup. Both share the same idempotent dispatch, so running both is safe.

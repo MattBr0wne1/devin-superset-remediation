@@ -2,6 +2,7 @@
 
 Subcommands:
   dispatch --issue N   Fetch issue N and start a remediation session.
+  scan                 Dispatch any labeled issue without an existing run.
   poll [--loop]        Reconcile active runs once (or continuously).
   report               Regenerate the Markdown summary and print metrics.
 """
@@ -15,7 +16,7 @@ import sys
 import time
 
 from .config import get_settings
-from .dispatcher import handle_labeled_issue
+from .dispatcher import handle_labeled_issue, scan_and_dispatch
 from .github_client import GitHubClient
 from .main import build_clients
 from .models import make_session_factory
@@ -36,6 +37,18 @@ def _cmd_dispatch(issue_number: int, force: bool = False) -> int:
         run = handle_labeled_issue(issue, db=db, devin=devin, github=github,
                                    settings=settings, force=force)
         print(json.dumps(run.to_dict(), indent=2))
+    return 0
+
+
+def _cmd_scan() -> int:
+    settings = get_settings()
+    session_factory = make_session_factory(settings.database_url)
+    devin, github = build_clients(settings)
+    if github is None:
+        github = GitHubClient(settings.github_token, settings.repo)
+    with session_factory() as db:
+        dispatched = scan_and_dispatch(db=db, devin=devin, github=github, settings=settings)
+    print(json.dumps({"dispatched": dispatched, "count": len(dispatched)}))
     return 0
 
 
@@ -71,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
     p_dispatch.add_argument("--force", action="store_true",
                             help="Re-trigger even if a run already exists for this issue")
 
+    sub.add_parser("scan", help="Dispatch any labeled issue without an existing run")
+
     p_poll = sub.add_parser("poll", help="Reconcile active runs with live sessions")
     p_poll.add_argument("--loop", action="store_true")
 
@@ -79,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "dispatch":
         return _cmd_dispatch(args.issue, args.force)
+    if args.command == "scan":
+        return _cmd_scan()
     if args.command == "poll":
         return _cmd_poll(args.loop)
     if args.command == "report":

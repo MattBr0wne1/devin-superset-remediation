@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from app.dispatcher import handle_labeled_issue
+from app.dispatcher import handle_labeled_issue, scan_and_dispatch
 from app.models import STATUS_RUNNING
-from tests.conftest import make_issue
+from tests.conftest import FakeGitHub, make_issue
+
+
+def _labeled_issue(number: int, label: str = "devin-fix"):
+    issue = make_issue(number=number)
+    issue["_labels"] = [label]
+    return issue
 
 
 def test_dispatch_creates_session_and_run(settings, session_factory, fake_devin, fake_github):
@@ -52,3 +58,32 @@ def test_dispatch_without_github(settings, session_factory, fake_devin):
     with session_factory() as db:
         run = handle_labeled_issue(issue, db=db, devin=fake_devin, github=None, settings=settings)
         assert run.session_id == "devin-1"
+
+
+def test_scan_dispatches_labeled_issues(settings, session_factory, fake_devin):
+    github = FakeGitHub(issues={n: _labeled_issue(n) for n in (7, 8, 9)})
+    with session_factory() as db:
+        dispatched = scan_and_dispatch(db=db, devin=fake_devin, github=github, settings=settings)
+    assert sorted(dispatched) == [7, 8, 9]
+    assert len(fake_devin.created) == 3
+
+
+def test_scan_skips_already_dispatched(settings, session_factory, fake_devin):
+    github = FakeGitHub(issues={n: _labeled_issue(n) for n in (7, 8)})
+    with session_factory() as db:
+        first = scan_and_dispatch(db=db, devin=fake_devin, github=github, settings=settings)
+    assert sorted(first) == [7, 8]
+    # A second scan (same labeled issues) must not re-dispatch anything.
+    with session_factory() as db:
+        second = scan_and_dispatch(db=db, devin=fake_devin, github=github, settings=settings)
+    assert second == []
+    assert len(fake_devin.created) == 2
+
+
+def test_scan_ignores_unlabeled_issues(settings, session_factory, fake_devin):
+    unlabeled = make_issue(number=5)  # no _labels → not returned by list_issues_by_label
+    github = FakeGitHub(issues={5: unlabeled, 7: _labeled_issue(7)})
+    with session_factory() as db:
+        dispatched = scan_and_dispatch(db=db, devin=fake_devin, github=github, settings=settings)
+    assert dispatched == [7]
+    assert len(fake_devin.created) == 1

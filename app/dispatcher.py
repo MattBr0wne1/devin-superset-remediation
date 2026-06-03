@@ -26,6 +26,33 @@ def get_run_for_issue(db: Session, issue_number: int) -> Run | None:
     return db.execute(select(Run).where(Run.issue_number == issue_number)).scalar_one_or_none()
 
 
+def scan_and_dispatch(
+    *,
+    db: Session,
+    devin: DevinClient,
+    github: GitHubClient,
+    settings: Settings,
+) -> list[int]:
+    """Pull-based trigger: dispatch any labeled issue without an existing run.
+
+    Lists open issues carrying ``settings.trigger_label`` and dispatches the ones
+    we have not seen yet. Idempotent — :func:`handle_labeled_issue` returns the
+    existing run for an already-dispatched issue, so re-scanning never spawns a
+    duplicate session. Returns the issue numbers newly dispatched this scan.
+    """
+    issues = github.list_issues_by_label(settings.trigger_label)
+    dispatched: list[int] = []
+    for issue in issues:
+        number = int(issue["number"])
+        if get_run_for_issue(db, number) is not None:
+            continue
+        handle_labeled_issue(issue, db=db, devin=devin, github=github, settings=settings)
+        dispatched.append(number)
+    if dispatched:
+        logger.info("Label scan dispatched %s new issue(s): %s", len(dispatched), dispatched)
+    return dispatched
+
+
 def handle_labeled_issue(
     issue: dict[str, Any],
     *,

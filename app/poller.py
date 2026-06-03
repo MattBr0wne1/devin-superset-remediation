@@ -196,6 +196,53 @@ def poll_once(
     return {"checked": checked, "completed": completed}
 
 
+def scan_once(
+    *,
+    session_factory: sessionmaker,
+    devin: DevinClient,
+    github: GitHubClient,
+    settings: Settings,
+) -> list[int]:
+    """Run one label-scan tick: dispatch any newly-labeled issues."""
+    from .dispatcher import scan_and_dispatch
+
+    with session_factory() as db:
+        return scan_and_dispatch(db=db, devin=devin, github=github, settings=settings)
+
+
+async def scan_loop(
+    *,
+    session_factory: sessionmaker,
+    devin: DevinClient,
+    github: GitHubClient,
+    settings: Settings,
+    stop_event: asyncio.Event,
+) -> None:
+    """Periodically scan the repo for labeled issues until ``stop_event`` is set.
+
+    This is the local-friendly trigger: no public URL needed (unlike the
+    webhook). Labeling an issue on GitHub gets it dispatched on the next tick.
+    """
+    logger.info("Label scanner started (interval=%ss, label=%s)",
+                settings.label_scan_interval_seconds, settings.trigger_label)
+    while not stop_event.is_set():
+        try:
+            dispatched = await asyncio.to_thread(
+                scan_once, session_factory=session_factory, devin=devin, github=github,
+                settings=settings,
+            )
+            if dispatched:
+                logger.info("Label scan dispatched: %s", dispatched)
+        except Exception:  # noqa: BLE001
+            logger.exception("Label scan iteration failed")
+        try:
+            await asyncio.wait_for(stop_event.wait(),
+                                   timeout=settings.label_scan_interval_seconds)
+        except TimeoutError:
+            pass
+    logger.info("Label scanner stopped")
+
+
 async def poller_loop(
     *,
     session_factory: sessionmaker,

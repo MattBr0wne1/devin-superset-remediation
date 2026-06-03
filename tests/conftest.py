@@ -62,6 +62,9 @@ class FakeGitHub:
     def get_issue(self, number: int) -> dict[str, Any]:
         return self.issues[number]
 
+    def list_issues_by_label(self, label: str, state: str = "open") -> list[dict[str, Any]]:
+        return [i for i in self.issues.values() if label in i.get("_labels", [])]
+
     def find_pr_by_branch(self, branch: str) -> str | None:
         return self.prs_by_branch.get(branch)
 

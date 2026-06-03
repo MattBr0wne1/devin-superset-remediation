@@ -53,6 +53,21 @@ class GitHubClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_issues_by_label(self, label: str, state: str = "open") -> list[dict[str, Any]]:
+        """List issues carrying ``label``. Pull requests are filtered out.
+
+        GitHub's issues endpoint returns PRs too (they share the issue number
+        space); any item with a ``pull_request`` key is a PR, not an issue.
+        """
+        resp = self._http.get(
+            self._repo_url("issues"),
+            headers=self._headers,
+            params={"labels": label, "state": state, "per_page": "100"},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        return [item for item in resp.json() if "pull_request" not in item]
+
     def create_issue(self, title: str, body: str,
                      labels: list[str] | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"title": title, "body": body}

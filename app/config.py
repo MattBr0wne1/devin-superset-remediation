@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     db_path: str = "remediation.db"
     poll_interval_seconds: int = 20
     summary_path: str = "summary.md"
+    # Periodically scan the repo for issues carrying the trigger label and
+    # dispatch any not yet seen. This is the local-friendly "pull" trigger: it
+    # needs no public URL (unlike the webhook), so labeling an issue on GitHub
+    # auto-dispatches on the next scan. Requires a valid GITHUB_TOKEN.
+    label_scan_enabled: bool = True
+    label_scan_interval_seconds: int = 60
     # Open PRs as drafts for human review (instruction passed to the session).
     draft_pr: bool = True
     # A running session whose heartbeat is older than this (and which has no PR

@@ -17,7 +17,7 @@ from .config import Settings, get_settings
 from .devin_client import DevinClient
 from .github_client import GitHubClient
 from .models import Run, make_session_factory
-from .poller import poller_loop
+from .poller import poller_loop, scan_loop
 from .reporting import compute_metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -51,17 +51,29 @@ def create_app(
             yield
             return
         stop_event = asyncio.Event()
-        task = asyncio.create_task(
-            poller_loop(session_factory=session_factory, devin=devin, github=github,
-                        settings=settings, stop_event=stop_event)
-        )
+        tasks = [
+            asyncio.create_task(
+                poller_loop(session_factory=session_factory, devin=devin, github=github,
+                            settings=settings, stop_event=stop_event)
+            )
+        ]
+        if settings.label_scan_enabled and github is not None:
+            tasks.append(
+                asyncio.create_task(
+                    scan_loop(session_factory=session_factory, devin=devin, github=github,
+                              settings=settings, stop_event=stop_event)
+                )
+            )
+        elif settings.label_scan_enabled:
+            logger.warning("Label scan enabled but no GitHub token configured; scanner disabled")
         app.state.stop_event = stop_event
-        app.state.poller_task = task
+        app.state.poller_task = tasks[0]
         try:
             yield
         finally:
             stop_event.set()
-            await task
+            for task in tasks:
+                await task
 
     app = FastAPI(title="Devin Superset Remediation", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
@@ -77,6 +89,7 @@ def create_app(
             "trigger_label": settings.trigger_label,
             "devin_configured": bool(settings.devin_api_key and settings.devin_org_id),
             "github_configured": github is not None,
+            "label_scan_active": settings.label_scan_enabled and github is not None,
         }
 
     @app.post("/webhooks/github-issue")

@@ -11,11 +11,12 @@ let a human know it is working.
   label "devin-fix"       │                     Orchestrator (one process)         │
   on a GitHub issue       │                                                        │
         │                 │   ┌────────────┐      ┌──────────────────┐            │
-        │  issues.labeled │   │  FastAPI   │ ───► │   dispatcher     │            │
-        └───── webhook ──►│   │  webhook   │      │ (idempotent;     │            │
-                          │   │  handler   │      │  trigger-agnostic)│           │
-                          │   └────────────┘      └────────┬─────────┘            │
-                          │                                │ create_session       │
+        │  push: webhook  │   │  FastAPI   │ ───► │   dispatcher     │            │
+        ├───────────────►│   │  webhook   │      │ (idempotent;     │            │
+        │                 │   │  handler   │      │  trigger-agnostic)│           │
+        │  pull: scan     │   ├────────────┤ ───► │                  │            │
+        └───────────────►│   │  scanner   │      └────────┬─────────┘            │
+                          │   └────────────┘               │ create_session       │
                           │                                ▼                       │
                           │                       ┌──────────────────┐  Devin v3  │
                           │                       │   DevinClient    │ ─────────► │ api.devin.ai
@@ -36,25 +37,27 @@ let a human know it is working.
 ```
 
 Everything runs in **one process** (one container): the FastAPI app serves the
-webhook + observability endpoints, and an `asyncio` background task (the poller)
-reconciles live Devin sessions on an interval. The only persistent state is a
-single **SQLite** file.
+webhook + observability endpoints, and two `asyncio` background tasks run on
+intervals — the **poller** (reconciles live Devin sessions) and the **scanner**
+(polls the repo for `devin-fix`-labeled issues and dispatches new ones, the
+local-friendly pull trigger). The only persistent state is a single **SQLite**
+file.
 
 ## 2. Components
 
 | File | Responsibility |
 | --- | --- |
-| `app/main.py` | FastAPI app: webhook endpoint, `/healthz`, `/dashboard`, `/api/runs`, `/api/metrics`, and the poller lifecycle (started/stopped with the app). |
-| `app/dispatcher.py` | The single, trigger-agnostic entry point. Idempotently turns a labeled issue into a Devin session and a persisted `Run`. |
+| `app/main.py` | FastAPI app: webhook endpoint, `/healthz`, `/dashboard`, `/api/runs`, `/api/metrics`, and the poller + scanner lifecycle (started/stopped with the app). |
+| `app/dispatcher.py` | The single, trigger-agnostic entry point. Idempotently turns a labeled issue into a Devin session and a persisted `Run`; `scan_and_dispatch` drives the pull trigger. |
 | `app/devin_client.py` | Minimal Devin v3 client: `create_session`, `get_session`, `send_message` (nudge), `terminate_session`. |
 | `app/github_client.py` | Minimal GitHub REST client: issue comments, labels, PR-by-branch lookup. |
 | `app/prompts.py` | Builds the session prompt — the contract that tells Devin what to fix, how to verify, and to emit a machine-readable verdict. |
-| `app/poller.py` | Background loop: reconcile each active session → status/verdict/PR, post issue comments, self-heal stalled sessions. |
+| `app/poller.py` | Background loops: reconcile each active session → status/verdict/PR (post comments, self-heal stalls); and periodically scan the repo for newly-labeled issues. |
 | `app/reporting.py` | Metrics aggregation (`compute_metrics`) and the Markdown `summary.md`. |
 | `app/models.py` | SQLite `Run` model and lifecycle status constants — the observability store. |
 | `app/config.py` | Pydantic settings loaded from environment / `.env`. |
 | `app/security.py` | HMAC verification of GitHub webhook signatures. |
-| `app/cli.py` | `dispatch` / `poll` / `report` ops commands (manual replay path). |
+| `app/cli.py` | `scan` / `dispatch` / `poll` / `report` ops commands (manual replay path). |
 | `scripts/seed_issues.py` | Creates the `devin-fix` label and the Part-1 issues on the fork. |
 | `scripts/demo.py` | Credential-free simulation of the whole pipeline with fake clients. |
 
@@ -155,8 +158,9 @@ This provably recovered sessions that had silently hung at startup.
 `dispatcher.handle_labeled_issue` is the single choke point and takes a plain
 issue dict, so any new trigger "slots in" by calling it:
 
-- the FastAPI webhook (the primary trigger),
-- `app/cli.py dispatch --issue <N>` (manual/automated replay),
+- the label scanner (the default pull trigger — no public URL needed),
+- the FastAPI webhook (the push trigger),
+- `app/cli.py scan` / `dispatch --issue <N>` (manual/automated replay),
 - a hypothetical scanner (Snyk/Dependabot/cron) that produces an issue payload.
 
 No core changes are needed to add a transport — only a new caller.
@@ -169,9 +173,10 @@ No core changes are needed to add a transport — only a new caller.
   database, broker, or cache.
 - **Outbound:** HTTPS to `api.devin.ai` (sessions) and `api.github.com`
   (comments / PR lookup).
-- **Inbound:** port 8000 for the webhook + observability endpoints. For GitHub to
-  reach it, the port must be publicly reachable (tunnel/ingress) and a webhook
-  registered on the fork; otherwise use the CLI/manual-webhook replay path.
+- **Inbound:** port 8000 for observability endpoints (and the optional webhook).
+  The default **pull scanner needs no inbound exposure** — it reaches out to
+  GitHub. Only the push webhook requires the port to be publicly reachable
+  (tunnel/ingress) plus a hook registered on the fork.
 
 See the [README](../README.md) for how to run/simulate it and
 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for the rationale behind these choices.

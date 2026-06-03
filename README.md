@@ -37,10 +37,11 @@ For background:
    label "devin-fix"   │                Orchestrator                   │
   ───────────────────► │                                              │
   (GitHub issue)       │  ┌────────────┐   ┌──────────────┐           │
-        │              │  │  webhook   │──►│  dispatcher  │            │
-        └─ webhook ───►│  │  handler   │   │ (idempotent) │            │
-                       │  └────────────┘   └──────┬───────┘            │
-                       │                          │ create_session     │
+        │  push ──────►│  │  webhook   │──►│  dispatcher  │            │
+        │              │  │  handler   │   │ (idempotent) │            │
+        │  pull ──────►│  ├────────────┤──►│              │            │
+        └─ label scan  │  │  scanner   │   └──────┬───────┘            │
+                       │  └────────────┘          │ create_session     │
                        │                          ▼                    │
                        │                   ┌──────────────┐  Devin v3   │
                        │                   │ DevinClient  │────────────►│ api.devin.ai
@@ -58,28 +59,32 @@ For background:
                                       MattBr0wne1/superset (the fork)
 ```
 
-**One trigger:** a `devin-fix`-labeled issue is delivered to the **FastAPI webhook**
-`POST /webhooks/github-issue` (HMAC-verified), which calls
-`dispatcher.handle_labeled_issue`.
+**One label, two ways to deliver it.** Both entry points converge on the same
+idempotent `dispatcher.handle_labeled_issue`:
+- **Pull (default, local-friendly):** a background **scanner** polls the repo for
+  open `devin-fix`-labeled issues and dispatches new ones — no public URL needed.
+- **Push (production):** GitHub delivers the `issues.labeled` event to the
+  **FastAPI webhook** `POST /webhooks/github-issue` (HMAC-verified) for instant
+  dispatch.
 
 The dispatcher is deliberately trigger-agnostic, so any other event source (a Snyk
 or Dependabot scan, a cron job, a CLI replay) "slots into the same handler" by
 calling it with an issue payload — no changes to the core. `app/cli.py` exposes
-`dispatch` / `poll` / `report` for exactly this kind of manual/automated replay.
+`scan` / `dispatch` / `poll` / `report` for exactly this kind of manual/automated replay.
 
 ## Components
 
 | File | Responsibility |
 | --- | --- |
-| `app/main.py` | FastAPI app: webhook, `/dashboard`, `/api/runs`, `/api/metrics`, poller lifecycle |
-| `app/dispatcher.py` | Idempotent: labeled issue → Devin session → persisted `Run` |
+| `app/main.py` | FastAPI app: webhook, label-scanner + poller lifecycle, `/dashboard`, `/api/runs`, `/api/metrics` |
+| `app/dispatcher.py` | Idempotent: labeled issue → Devin session → persisted `Run`; `scan_and_dispatch` for the pull trigger |
 | `app/devin_client.py` | Devin v3 client (`create_session`, `get_session`) |
-| `app/github_client.py` | GitHub REST (issues, comments, labels, hooks, repo admin) |
+| `app/github_client.py` | GitHub REST (issues, `list_issues_by_label`, comments, labels) |
 | `app/prompts.py` | Builds the session prompt incl. the `structured_output` verdict contract |
-| `app/poller.py` | Background loop: reconcile sessions → status/verdict/PR, comment back |
+| `app/poller.py` | Background loops: reconcile sessions → status/verdict/PR; periodic label scan |
 | `app/reporting.py` | Metrics aggregation + `summary.md` report |
 | `app/models.py` | SQLite `Run` model (the observability store) |
-| `app/cli.py` | `dispatch` / `poll` / `report` ops commands (manual replay) |
+| `app/cli.py` | `scan` / `dispatch` / `poll` / `report` ops commands (manual replay) |
 | `scripts/seed_issues.py` | Creates the `devin-fix` label and the Part-1 issues |
 | `scripts/demo.py` | **Credential-free simulation** of the whole pipeline |
 
@@ -136,7 +141,7 @@ rest. `/healthz` reports readiness:
 
 ```json
 {"ok": true, "repo": "MattBr0wne1/superset", "trigger_label": "devin-fix",
- "devin_configured": true, "github_configured": true}
+ "devin_configured": true, "github_configured": true, "label_scan_active": true}
 ```
 
 ### 3. Author the Part-1 issues on the fork
@@ -148,24 +153,36 @@ docker compose exec orchestrator python -m scripts.seed_issues             # cre
 ```
 
 ### 4. Trigger remediation
-- **Via CLI inside the container (simplest local-Docker path):**
-  ```bash
-  docker compose exec orchestrator python -m app.cli dispatch --issue <N>
-  ```
-  > Requires a **valid** `GITHUB_TOKEN` in `.env`: the CLI reads the issue from
-  > GitHub before creating the session. (A GitHub App `ghs_…` token expires
-  > hourly — use a Personal Access Token with `repo` scope so it doesn't lapse
-  > mid-run.)
-- **Via GitHub label (the event-driven trigger):** add the `devin-fix` label to
-  an issue — GitHub delivers the `issues.labeled` event to the webhook. (Needs
-  the container's port publicly reachable + a webhook registered on the repo.)
-- **Via webhook (manual, no token needed — issue is in the payload):**
+
+**Recommended (local, fully event-driven): label the issue on GitHub.**
+The running container scans the repo on an interval for open issues carrying the
+`devin-fix` label and dispatches any it hasn't seen yet — no public URL, no CLI
+call. Just add the label to an issue (e.g. #7/#8/#9) and watch the dashboard.
+```text
+add "devin-fix" label on GitHub  →  next scan tick picks it up  →  Devin session → draft PR
+```
+> This is the "pull" form of the event trigger. It requires a **valid**
+> `GITHUB_TOKEN` in `.env` (it reads the repo's issues). Tunables:
+> `LABEL_SCAN_ENABLED` (default `true`) and `LABEL_SCAN_INTERVAL_SECONDS`
+> (default `60`). The scan is idempotent — an already-dispatched issue is never
+> re-run. Confirm it's active via `label_scan_active: true` on `/healthz`.
+
+Other trigger paths (same dispatch code, useful for specific situations):
+- **One-shot scan on demand:** `docker compose exec orchestrator python -m app.cli scan`
+- **Dispatch a single issue explicitly:** `docker compose exec orchestrator python -m app.cli dispatch --issue <N>`
+- **Webhook (push):** the production "instant" trigger — GitHub delivers
+  `issues.labeled` to `POST /webhooks/github-issue` (HMAC-verified). Needs the
+  port publicly reachable + a webhook registered on the repo. Simulate locally
+  with no token (the issue is in the payload):
   ```bash
   curl -X POST localhost:8000/webhooks/github-issue \
     -H 'X-GitHub-Event: issues' -H 'Content-Type: application/json' \
     -d '{"action":"labeled","label":{"name":"devin-fix"},
          "issue":{"number":1,"title":"...","body":"..."}}'
   ```
+
+> Token note: a GitHub App `ghs_…` token expires hourly — use a Personal Access
+> Token with `repo` scope so it doesn't lapse mid-run.
 
 ### 5. Watch it work
 The service's background poller reconciles automatically; open
@@ -189,11 +206,13 @@ cp .env.example .env        # then edit .env, e.g.:
 #   REPO=MattBr0wne1/superset
 #   TRIGGER_LABEL=devin-fix
 
-docker compose up -d --build                                   # start service + poller + dashboard
-docker compose exec orchestrator python -m app.cli dispatch --issue 7
-docker compose exec orchestrator python -m app.cli dispatch --issue 8
-docker compose exec orchestrator python -m app.cli dispatch --issue 9
-# watch http://localhost:8000/dashboard — each issue → a real Devin session → draft PR
+docker compose up -d --build       # start service + poller + label-scanner + dashboard
+
+# Then just label the issues on GitHub (#7/#8/#9 with "devin-fix"). The scanner
+# picks them up within LABEL_SCAN_INTERVAL_SECONDS and dispatches each one.
+# Prefer not to wait for the interval? force an immediate scan:
+docker compose exec orchestrator python -m app.cli scan
+# watch http://localhost:8000/dashboard — each labeled issue → a real Devin session → draft PR
 ```
 
 ## The Part-1 issues
@@ -217,6 +236,8 @@ All configuration is environment variables (see `.env.example`):
 | `GITHUB_TOKEN` | live* | — | Token for issue comments + PR lookup. Without it, runs still work but no comments are posted. |
 | `REPO` | no | `MattBr0wne1/superset` | The fork that owns issues + receives PRs. |
 | `TRIGGER_LABEL` | no | `devin-fix` | Label that fires a run. |
+| `LABEL_SCAN_ENABLED` | no | `true` | Background scan of the repo for labeled issues (the pull trigger). Needs a valid `GITHUB_TOKEN`. |
+| `LABEL_SCAN_INTERVAL_SECONDS` | no | `60` | How often the scanner polls the repo for newly-labeled issues. |
 | `WEBHOOK_SECRET` | recommended | — | Shared secret for `X-Hub-Signature-256` verification. |
 | `DB_PATH` | no | `remediation.db` (`/data/...` in Docker) | SQLite path. |
 | `SUMMARY_PATH` | no | `summary.md` (`/data/...` in Docker) | Markdown report path. |
