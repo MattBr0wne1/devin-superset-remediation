@@ -58,7 +58,7 @@ file.
 | `app/config.py` | Pydantic settings loaded from environment / `.env`. |
 | `app/security.py` | HMAC verification of GitHub webhook signatures. |
 | `app/cli.py` | `scan` / `dispatch` / `poll` / `report` ops commands (manual replay path). |
-| `scripts/seed_issues.py` | Creates the `devin-fix` label and the Part-1 issues on the fork. |
+| `scripts/seed_issues.py` | Creates the `devin-fix` label and the seed issues on the fork. |
 | `scripts/demo.py` | Credential-free simulation of the whole pipeline with fake clients. |
 
 ## 3. End-to-end sequence

@@ -1,4 +1,4 @@
-"""Author the Part-1 remediation issues (and trigger label) on the fork.
+"""Author the seed remediation issues (and trigger label) on the fork.
 
 Run once after the fork's Issues tab is enabled:
 

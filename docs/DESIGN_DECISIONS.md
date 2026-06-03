@@ -1,6 +1,6 @@
 # Design Decisions
 
-The brief was a **simple but reliable** event-driven workflow where observability
+The goal is a **simple but reliable** event-driven workflow where observability
 is key. Every decision below is weighed against that: does it make the core
 workflow more reliable or more observable? If not, it was cut.
 
@@ -116,7 +116,7 @@ the fallback shows it on the dashboard the moment it's real.
 `summary.md`, and issue comments — all reading from one SQLite store. Track Devin
 `status_detail` and a last-update **heartbeat** per run.
 
-**Why:** "How would a leader know it's working?" needs more than logs.
+**Why:** Knowing the system is working needs more than logs.
 `status_detail` ("working" vs "waiting_for_user" vs "waiting_for_approval")
 distinguishes healthy progress from blocked-on-input, and the heartbeat exposes
 staleness at a glance. Issue comments keep the audit trail on the work item.
