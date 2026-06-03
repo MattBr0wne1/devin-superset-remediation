@@ -150,25 +150,40 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
             "succeeded": "#2da44e", "failed": "#cf222e", "blocked": "#bf8700",
             "running": "#0969da", "dispatched": "#57606a",
         }.get(r["status"], "#57606a")
+        detail = r.get("status_detail") or "—"
+        # Highlight runs that are paused waiting on a human.
+        attn = detail in ("waiting_for_user", "waiting_for_approval")
+        detail_cell = (
+            f'<span style="color:#bf8700;font-weight:600">{detail}</span>' if attn else detail
+        )
+        age = r.get("seconds_since_update")
+        last = f"{age:.0f}s ago" if age is not None else "—"
         rows.append(
             f"<tr><td>#{r['issue_number']}</td>"
             f"<td>{r['issue_title']}</td>"
             f'<td><span style="background:{badge};color:#fff;padding:2px 8px;'
             f'border-radius:10px;font-size:12px">{r["status"]}</span></td>'
+            f"<td>{detail_cell}</td><td>{last}</td>"
             f"<td>{r['verdict'] or '—'}</td><td>{pr}</td><td>{acus}</td>"
             f"<td>{dur}</td><td>{sess}</td></tr>"
         )
-    table = "\n".join(rows) or '<tr><td colspan="8">No runs yet</td></tr>'
+    table = "\n".join(rows) or '<tr><td colspan="10">No runs yet</td></tr>'
     sr = metrics["success_rate"] * 100
     cpf = metrics["cost_per_fix_acus"]
     cards_data = [
         (metrics["total_runs"], "Total runs"),
         (metrics["in_flight"], "In flight"),
+        (metrics.get("needs_attention", 0), "Needs attention"),
         (metrics["pr_count"], "PRs opened"),
         (metrics["succeeded"], "Succeeded"),
         (f"{sr:.0f}%", "Success rate"),
         (f"{cpf} ACU" if cpf is not None else "—", "Cost / fix"),
     ]
+    detail_breakdown = metrics.get("in_flight_detail") or {}
+    breakdown_txt = (
+        " · ".join(f"{v} {k}" for k, v in sorted(detail_breakdown.items()))
+        if detail_breakdown else "none in flight"
+    )
     cards = "\n".join(
         f'  <div class="card"><div class="n">{value}</div>'
         f'<div class="l">{label}</div></div>'
@@ -191,12 +206,13 @@ th{{background:#f6f8fa}}
 <h1>Devin Remediation Dashboard</h1>
 <p>Repository: <code>{settings.repo}</code> · trigger label: <code>{settings.trigger_label}</code>
  · auto-refresh 15s</p>
+<p style="color:#57606a;font-size:13px">In-flight detail: {breakdown_txt}</p>
 <div class="cards">
 {cards}
 </div>
 <table>
-<thead><tr><th>Issue</th><th>Title</th><th>Status</th><th>Verdict</th><th>PR</th>
-<th>ACUs</th><th>Duration</th><th>Session</th></tr></thead>
+<thead><tr><th>Issue</th><th>Title</th><th>Status</th><th>Detail</th><th>Last update</th>
+<th>Verdict</th><th>PR</th><th>ACUs</th><th>Duration</th><th>Session</th></tr></thead>
 <tbody>
 {table}
 </tbody></table>

@@ -41,8 +41,12 @@ class Run(Base):
     session_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default=STATUS_DISPATCHED, index=True)
-    # Raw Devin session status (e.g. "running", "finished", "blocked").
+    # Raw Devin session status (e.g. "running", "exit", "suspended").
     status_enum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Finer-grained live detail (e.g. "working", "waiting_for_user", "finished").
+    status_detail: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Devin session's own last-activity time (heartbeat for liveness/staleness).
+    session_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     acus_consumed: Mapped[float | None] = mapped_column(Float, nullable=True)
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -68,6 +72,16 @@ class Run(Base):
             return None
         return (self.completed_at - self.created_at).total_seconds()
 
+    @property
+    def seconds_since_update(self) -> float | None:
+        """Heartbeat age: seconds since Devin last reported activity."""
+        if self.session_updated_at is None:
+            return None
+        ref = self.session_updated_at
+        if ref.tzinfo is None:
+            ref = ref.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - ref).total_seconds()
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -77,6 +91,7 @@ class Run(Base):
             "session_url": self.session_url,
             "status": self.status,
             "status_enum": self.status_enum,
+            "status_detail": self.status_detail,
             "acus_consumed": self.acus_consumed,
             "verdict": self.verdict,
             "pr_url": self.pr_url,
@@ -86,6 +101,10 @@ class Run(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_seconds": self.duration_seconds,
+            "session_updated_at": (
+                self.session_updated_at.isoformat() if self.session_updated_at else None
+            ),
+            "seconds_since_update": self.seconds_since_update,
         }
 
 

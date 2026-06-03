@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from app.dispatcher import handle_labeled_issue
-from app.models import STATUS_FAILED, STATUS_RUNNING, STATUS_SUCCEEDED, Run
+from app.models import (
+    STATUS_BLOCKED,
+    STATUS_FAILED,
+    STATUS_RUNNING,
+    STATUS_SUCCEEDED,
+    Run,
+)
 from app.poller import poll_once
 from tests.conftest import make_issue
 
@@ -16,8 +22,10 @@ def _dispatch(settings, session_factory, fake_devin, fake_github, number):
 
 def test_poll_marks_success_on_pass_verdict(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 1)
-    fake_devin.set_state(sid, status="finished", pr_url="https://github.com/x/y/pull/1",
-                         acus_consumed=3.5,
+    # "exit" is the real v3 terminal status value.
+    fake_devin.set_state(sid, status="exit", status_detail="finished",
+                         pr_url="https://github.com/x/y/pull/1",
+                         acus_consumed=3.5, raw={"updated_at": 1700000000},
                          structured_output={"verdict": "pass",
                                             "checks": {"precommit": True, "tests": True},
                                             "summary": "Replaced utcnow"})
@@ -32,8 +40,22 @@ def test_poll_marks_success_on_pass_verdict(settings, session_factory, fake_devi
         assert run.completed_at is not None
         assert run.checks == {"precommit": True, "tests": True}
         assert run.acus_consumed == 3.5
+        assert run.status_detail == "finished"
+        assert run.session_updated_at is not None
     # terminal comment posted
     assert any("succeeded" in c[1] for c in fake_github.comments)
+
+
+def test_poll_terminal_on_finished_detail(settings, session_factory, fake_devin, fake_github):
+    # status still "running" but status_detail "finished" means the task is done.
+    sid = _dispatch(settings, session_factory, fake_devin, fake_github, 5)
+    fake_devin.set_state(sid, status="running", status_detail="finished",
+                         pr_url="https://github.com/x/y/pull/9")
+    result = poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
+                       settings=settings)
+    assert result == {"checked": 1, "completed": 1}
+    with session_factory() as db:
+        assert db.query(Run).one().status == STATUS_SUCCEEDED
 
 
 def test_poll_marks_failed_on_fail_verdict(settings, session_factory, fake_devin, fake_github):
@@ -48,9 +70,23 @@ def test_poll_marks_failed_on_fail_verdict(settings, session_factory, fake_devin
 
 def test_poll_keeps_running_when_not_terminal(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 3)
-    fake_devin.set_state(sid, status="running")
+    fake_devin.set_state(sid, status="running", status_detail="working",
+                         raw={"updated_at": 1700000000})
     result = poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
                        settings=settings)
     assert result["completed"] == 0
     with session_factory() as db:
-        assert db.query(Run).one().status == STATUS_RUNNING
+        run = db.query(Run).one()
+        assert run.status == STATUS_RUNNING
+        # live detail + heartbeat captured even while still running
+        assert run.status_detail == "working"
+        assert run.session_updated_at is not None
+
+
+def test_poll_blocked_on_suspended(settings, session_factory, fake_devin, fake_github):
+    sid = _dispatch(settings, session_factory, fake_devin, fake_github, 6)
+    fake_devin.set_state(sid, status="suspended", status_detail="out_of_credits")
+    poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
+              settings=settings)
+    with session_factory() as db:
+        assert db.query(Run).one().status == STATUS_BLOCKED

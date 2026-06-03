@@ -53,6 +53,10 @@ def reconcile_run(
     """Update a run from a session snapshot. Returns True if it just completed."""
     was_terminal = run.status in TERMINAL_STATUSES
     run.status_enum = state.status
+    run.status_detail = state.status_detail
+    ts = state.raw.get("updated_at")
+    if isinstance(ts, (int, float)):
+        run.session_updated_at = datetime.fromtimestamp(ts, tz=UTC)
     if state.acus_consumed is not None:
         run.acus_consumed = state.acus_consumed
     if state.pr_url:

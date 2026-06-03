@@ -48,6 +48,18 @@ def compute_metrics(db: Session) -> dict[str, Any]:
     succeeded_acus = sum(r.acus_consumed or 0.0 for r in runs if r.status == STATUS_SUCCEEDED)
     cost_per_fix = (succeeded_acus / succeeded) if succeeded else None
 
+    # Live breakdown of in-flight runs by Devin status_detail (working /
+    # waiting_for_user / waiting_for_approval / ...) so a stuck run is obvious.
+    in_flight_detail: dict[str, int] = {}
+    needs_attention = 0
+    for r in runs:
+        if r.status != STATUS_RUNNING:
+            continue
+        detail = r.status_detail or "unknown"
+        in_flight_detail[detail] = in_flight_detail.get(detail, 0) + 1
+        if detail in ("waiting_for_user", "waiting_for_approval"):
+            needs_attention += 1
+
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "total_runs": total,
@@ -64,6 +76,8 @@ def compute_metrics(db: Session) -> dict[str, Any]:
         "median_duration_seconds": round(statistics.median(durations), 1) if durations else None,
         "total_acus": round(total_acus, 2),
         "cost_per_fix_acus": round(cost_per_fix, 2) if cost_per_fix is not None else None,
+        "in_flight_detail": in_flight_detail,
+        "needs_attention": needs_attention,
     }
 
 
@@ -107,16 +121,19 @@ def render_summary_md(db: Session, path: str, *, repo: str = "") -> str:
     lines.append("")
     lines.append("## Runs")
     lines.append("")
-    lines.append("| Issue | Status | Verdict | PR | ACUs | Duration | Session |")
-    lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+    lines.append("| Issue | Status | Detail | Last update | Verdict | PR | ACUs | Duration | "
+                 "Session |")
+    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in runs:
         dur = f"{r.duration_seconds:.0f}s" if r.duration_seconds is not None else "—"
         pr = f"[PR]({r.pr_url})" if r.pr_url else "—"
         sess = f"[link]({r.session_url})" if r.session_url else "—"
         acus = r.acus_consumed if r.acus_consumed is not None else "—"
+        age = r.seconds_since_update
+        last = f"{age:.0f}s ago" if age is not None else "—"
         lines.append(
-            f"| #{r.issue_number} | {r.status} | {r.verdict or '—'} | {pr} | {acus} | "
-            f"{dur} | {sess} |"
+            f"| #{r.issue_number} | {r.status} | {r.status_detail or '—'} | {last} | "
+            f"{r.verdict or '—'} | {pr} | {acus} | {dur} | {sess} |"
         )
     lines.append("")
 

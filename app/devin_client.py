@@ -34,16 +34,26 @@ class SessionState:
     structured_output: dict[str, Any] | None
     raw: dict[str, Any]
 
-    # `status` values that mean the session has stopped doing work.
-    TERMINAL = {"finished", "expired", "blocked", "stopped"}
+    # Real v3 `status` values that mean the session has stopped doing work.
+    # ("exit"/"error" are the live API values; the rest are accepted for safety.)
+    TERMINAL = {"exit", "error", "finished", "expired", "stopped"}
+    # Halted and needing human attention (paused / out of credits / etc.).
+    BLOCKED = {"suspended", "blocked"}
 
     @property
     def is_terminal(self) -> bool:
-        return (self.status or "").lower() in self.TERMINAL
+        status = (self.status or "").lower()
+        # status_detail == "finished" means the task is complete even while the
+        # session object still reports status "running".
+        return (
+            status in self.TERMINAL
+            or status in self.BLOCKED
+            or (self.status_detail or "").lower() == "finished"
+        )
 
     @property
     def is_blocked(self) -> bool:
-        return (self.status or "").lower() == "blocked"
+        return (self.status or "").lower() in self.BLOCKED
 
 
 class DevinClient:
