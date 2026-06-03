@@ -43,7 +43,8 @@ class DemoDevin:
                                                                       "tests": True}})
         pr = so.get("pr_url") or (f"https://github.com/MattBr0wne1/superset/pull/{issue}"
                                   if so.get("verdict") == "pass" else None)
-        return SessionState(session_id, "finished", "finished", pr, so, {})
+        acus = float(so.get("acus_consumed", 4.0))
+        return SessionState(session_id, "finished", "finished", pr, acus, so, {})
 
 
 class DemoGitHub:

@@ -145,6 +145,7 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
         pr = f'<a href="{r["pr_url"]}">PR</a>' if r["pr_url"] else "—"
         sess = f'<a href="{r["session_url"]}">session</a>' if r["session_url"] else "—"
         dur = f'{r["duration_seconds"]:.0f}s' if r["duration_seconds"] is not None else "—"
+        acus = r["acus_consumed"] if r["acus_consumed"] is not None else "—"
         badge = {
             "succeeded": "#2da44e", "failed": "#cf222e", "blocked": "#bf8700",
             "running": "#0969da", "dispatched": "#57606a",
@@ -154,16 +155,19 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
             f"<td>{r['issue_title']}</td>"
             f'<td><span style="background:{badge};color:#fff;padding:2px 8px;'
             f'border-radius:10px;font-size:12px">{r["status"]}</span></td>'
-            f"<td>{r['verdict'] or '—'}</td><td>{pr}</td><td>{dur}</td><td>{sess}</td></tr>"
+            f"<td>{r['verdict'] or '—'}</td><td>{pr}</td><td>{acus}</td>"
+            f"<td>{dur}</td><td>{sess}</td></tr>"
         )
-    table = "\n".join(rows) or '<tr><td colspan="7">No runs yet</td></tr>'
+    table = "\n".join(rows) or '<tr><td colspan="8">No runs yet</td></tr>'
     sr = metrics["success_rate"] * 100
+    cpf = metrics["cost_per_fix_acus"]
     cards_data = [
         (metrics["total_runs"], "Total runs"),
         (metrics["in_flight"], "In flight"),
         (metrics["pr_count"], "PRs opened"),
         (metrics["succeeded"], "Succeeded"),
         (f"{sr:.0f}%", "Success rate"),
+        (f"{cpf} ACU" if cpf is not None else "—", "Cost / fix"),
     ]
     cards = "\n".join(
         f'  <div class="card"><div class="n">{value}</div>'
@@ -192,7 +196,7 @@ th{{background:#f6f8fa}}
 </div>
 <table>
 <thead><tr><th>Issue</th><th>Title</th><th>Status</th><th>Verdict</th><th>PR</th>
-<th>Duration</th><th>Session</th></tr></thead>
+<th>ACUs</th><th>Duration</th><th>Session</th></tr></thead>
 <tbody>
 {table}
 </tbody></table>

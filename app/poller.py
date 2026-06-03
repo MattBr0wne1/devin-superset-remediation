@@ -33,7 +33,7 @@ def _derive_status(state: SessionState) -> str:
     verdict = ""
     if isinstance(state.structured_output, dict):
         verdict = str(state.structured_output.get("verdict", "")).lower()
-    if (state.status_enum or "").lower() == "blocked":
+    if state.is_blocked:
         return STATUS_BLOCKED
     if verdict == "pass":
         return STATUS_SUCCEEDED
@@ -52,7 +52,9 @@ def reconcile_run(
 ) -> bool:
     """Update a run from a session snapshot. Returns True if it just completed."""
     was_terminal = run.status in TERMINAL_STATUSES
-    run.status_enum = state.status_enum
+    run.status_enum = state.status
+    if state.acus_consumed is not None:
+        run.acus_consumed = state.acus_consumed
     if state.pr_url:
         run.pr_url = state.pr_url
     if isinstance(state.structured_output, dict):
@@ -82,6 +84,8 @@ def _comment_terminal(run: Run, github: GitHubClient) -> None:
         lines.append(f"Pull request: {run.pr_url}")
     if run.verdict:
         lines.append(f"Verdict: `{run.verdict}` | checks: `{run.checks or {}}`")
+    if run.acus_consumed is not None:
+        lines.append(f"ACUs consumed: {run.acus_consumed}")
     if run.summary:
         lines.append(f"Summary: {run.summary}")
     if run.session_url:

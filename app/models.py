@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Integer, String, Text, create_engine
+from sqlalchemy import DateTime, Float, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -41,7 +41,9 @@ class Run(Base):
     session_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default=STATUS_DISPATCHED, index=True)
+    # Raw Devin session status (e.g. "running", "finished", "blocked").
     status_enum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    acus_consumed: Mapped[float | None] = mapped_column(Float, nullable=True)
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     checks_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -75,6 +77,7 @@ class Run(Base):
             "session_url": self.session_url,
             "status": self.status,
             "status_enum": self.status_enum,
+            "acus_consumed": self.acus_consumed,
             "verdict": self.verdict,
             "pr_url": self.pr_url,
             "checks": self.checks,

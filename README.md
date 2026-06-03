@@ -73,9 +73,11 @@ the dispatcher with an issue payload — no changes to the core.
 ## Observability — "how an engineering leader knows it's working"
 
 - **`GET /dashboard`** — auto-refreshing HTML: per-run status, verdict, PR link,
-  duration, session link, plus headline cards (total, in-flight, PRs, success rate).
+  ACUs, duration, session link, plus headline cards (total, in-flight, PRs,
+  success rate, cost-per-fix).
 - **`GET /api/metrics`** — JSON: funnel counts, success rate, PR conversion,
-  median/avg time-to-completion.
+  median/avg time-to-completion, total ACUs, and **cost-per-verified-fix**
+  (real ACU usage read from each session's `acus_consumed`).
 - **`summary.md`** — regenerated each poll (funnel + per-run table).
 - **Issue comments** — start + terminal verdict, so the audit trail lives on the
   work item itself.

@@ -44,6 +44,10 @@ def compute_metrics(db: Session) -> dict[str, Any]:
     success_rate = (succeeded / terminal) if terminal else 0.0
     pr_rate = (pr_count / total) if total else 0.0
 
+    total_acus = sum(r.acus_consumed or 0.0 for r in runs)
+    succeeded_acus = sum(r.acus_consumed or 0.0 for r in runs if r.status == STATUS_SUCCEEDED)
+    cost_per_fix = (succeeded_acus / succeeded) if succeeded else None
+
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "total_runs": total,
@@ -58,6 +62,8 @@ def compute_metrics(db: Session) -> dict[str, Any]:
         "pr_rate": round(pr_rate, 3),
         "avg_duration_seconds": round(statistics.mean(durations), 1) if durations else None,
         "median_duration_seconds": round(statistics.median(durations), 1) if durations else None,
+        "total_acus": round(total_acus, 2),
+        "cost_per_fix_acus": round(cost_per_fix, 2) if cost_per_fix is not None else None,
     }
 
 
@@ -95,17 +101,22 @@ def render_summary_md(db: Session, path: str, *, repo: str = "") -> str:
         lines.append(f"- **Median time-to-completion:** {m['median_duration_seconds']}s")
     if m["avg_duration_seconds"] is not None:
         lines.append(f"- **Average time-to-completion:** {m['avg_duration_seconds']}s")
+    lines.append(f"- **Total ACUs consumed:** {m['total_acus']}")
+    if m["cost_per_fix_acus"] is not None:
+        lines.append(f"- **Cost per verified fix:** {m['cost_per_fix_acus']} ACUs")
     lines.append("")
     lines.append("## Runs")
     lines.append("")
-    lines.append("| Issue | Status | Verdict | PR | Duration | Session |")
-    lines.append("| --- | --- | --- | --- | --- | --- |")
+    lines.append("| Issue | Status | Verdict | PR | ACUs | Duration | Session |")
+    lines.append("| --- | --- | --- | --- | --- | --- | --- |")
     for r in runs:
         dur = f"{r.duration_seconds:.0f}s" if r.duration_seconds is not None else "—"
         pr = f"[PR]({r.pr_url})" if r.pr_url else "—"
         sess = f"[link]({r.session_url})" if r.session_url else "—"
+        acus = r.acus_consumed if r.acus_consumed is not None else "—"
         lines.append(
-            f"| #{r.issue_number} | {r.status} | {r.verdict or '—'} | {pr} | {dur} | {sess} |"
+            f"| #{r.issue_number} | {r.status} | {r.verdict or '—'} | {pr} | {acus} | "
+            f"{dur} | {sess} |"
         )
     lines.append("")
 

@@ -30,8 +30,9 @@ class FakeDevin:
         self._states[session_id] = SessionState(
             session_id=session_id,
             status=kwargs.get("status"),
-            status_enum=kwargs.get("status_enum"),
+            status_detail=kwargs.get("status_detail"),
             pr_url=kwargs.get("pr_url"),
+            acus_consumed=kwargs.get("acus_consumed"),
             structured_output=kwargs.get("structured_output"),
             raw=kwargs.get("raw", {}),
         )

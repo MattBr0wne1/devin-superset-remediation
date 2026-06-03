@@ -16,7 +16,8 @@ def _dispatch(settings, session_factory, fake_devin, fake_github, number):
 
 def test_poll_marks_success_on_pass_verdict(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 1)
-    fake_devin.set_state(sid, status_enum="finished", pr_url="https://github.com/x/y/pull/1",
+    fake_devin.set_state(sid, status="finished", pr_url="https://github.com/x/y/pull/1",
+                         acus_consumed=3.5,
                          structured_output={"verdict": "pass",
                                             "checks": {"precommit": True, "tests": True},
                                             "summary": "Replaced utcnow"})
@@ -30,13 +31,14 @@ def test_poll_marks_success_on_pass_verdict(settings, session_factory, fake_devi
         assert run.pr_url.endswith("/pull/1")
         assert run.completed_at is not None
         assert run.checks == {"precommit": True, "tests": True}
+        assert run.acus_consumed == 3.5
     # terminal comment posted
     assert any("succeeded" in c[1] for c in fake_github.comments)
 
 
 def test_poll_marks_failed_on_fail_verdict(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 2)
-    fake_devin.set_state(sid, status_enum="finished",
+    fake_devin.set_state(sid, status="finished",
                          structured_output={"verdict": "fail", "summary": "could not fix"})
     poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
               settings=settings)
@@ -46,7 +48,7 @@ def test_poll_marks_failed_on_fail_verdict(settings, session_factory, fake_devin
 
 def test_poll_keeps_running_when_not_terminal(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 3)
-    fake_devin.set_state(sid, status_enum="working")
+    fake_devin.set_state(sid, status="running")
     result = poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
                        settings=settings)
     assert result["completed"] == 0

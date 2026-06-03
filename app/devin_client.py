@@ -28,17 +28,22 @@ class SessionState:
 
     session_id: str
     status: str | None
-    status_enum: str | None
+    status_detail: str | None
     pr_url: str | None
+    acus_consumed: float | None
     structured_output: dict[str, Any] | None
     raw: dict[str, Any]
 
-    # status_enum values that mean the session has stopped doing work.
-    TERMINAL = {"finished", "expired", "blocked"}
+    # `status` values that mean the session has stopped doing work.
+    TERMINAL = {"finished", "expired", "blocked", "stopped"}
 
     @property
     def is_terminal(self) -> bool:
-        return (self.status_enum or "").lower() in self.TERMINAL
+        return (self.status or "").lower() in self.TERMINAL
+
+    @property
+    def is_blocked(self) -> bool:
+        return (self.status or "").lower() == "blocked"
 
 
 class DevinClient:
@@ -109,12 +114,22 @@ class DevinClient:
         )
         resp.raise_for_status()
         data = resp.json()
-        pr = data.get("pull_request") or {}
         return SessionState(
             session_id=data.get("session_id", session_id),
             status=data.get("status"),
-            status_enum=data.get("status_enum"),
-            pr_url=pr.get("url") if isinstance(pr, dict) else None,
+            status_detail=data.get("status_detail"),
+            pr_url=_first_pr_url(data.get("pull_requests")),
+            acus_consumed=data.get("acus_consumed"),
             structured_output=data.get("structured_output"),
             raw=data,
         )
+
+
+def _first_pr_url(pull_requests: Any) -> str | None:
+    """Extract the first PR URL from the v3 ``pull_requests`` array."""
+    if not pull_requests:
+        return None
+    first = pull_requests[0]
+    if isinstance(first, dict):
+        return first.get("url") or first.get("html_url")
+    return str(first)
