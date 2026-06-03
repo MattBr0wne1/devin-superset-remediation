@@ -85,10 +85,10 @@ calling it with an issue payload — no changes to the core. `app/cli.py` expose
 | `app/reporting.py` | Metrics aggregation + `summary.md` report |
 | `app/models.py` | SQLite `Run` model (the observability store) |
 | `app/cli.py` | `scan` / `dispatch` / `poll` / `report` ops commands (manual replay) |
-| `scripts/seed_issues.py` | Creates the `devin-fix` label and the Part-1 issues |
+| `scripts/seed_issues.py` | Creates the `devin-fix` label and the seed issues |
 | `scripts/demo.py` | **Credential-free simulation** of the whole pipeline |
 
-## Observability — "how an engineering leader knows it's working"
+## Observability
 
 - **`GET /dashboard`** — auto-refreshing HTML: per-run status, live
   `status_detail`, a "last update Ns ago" heartbeat, verdict, PR link, ACUs,
@@ -144,7 +144,7 @@ rest. `/healthz` reports readiness:
  "devin_configured": true, "github_configured": true, "label_scan_active": true}
 ```
 
-### 3. Author the Part-1 issues on the fork
+### 3. Author the seed issues on the fork
 Only needed if the issues don't exist yet (the demo issues are already seeded on
 the fork). Requires the fork's Issues tab enabled and a valid `GITHUB_TOKEN`:
 ```bash
@@ -215,7 +215,7 @@ docker compose exec orchestrator python -m app.cli scan
 # watch http://localhost:8000/dashboard — each labeled issue → a real Devin session → draft PR
 ```
 
-## The Part-1 issues
+## The seed issues
 
 Small, self-contained, and verifiable via `pre-commit` (so a session can prove
 the fix green). See `scripts/seed_issues.py` for exact text. Theme: removing
