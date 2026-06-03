@@ -30,6 +30,19 @@ def _dispatch(settings, session_factory, fake_devin, fake_github, number):
                                     github=fake_github, settings=settings).session_id
 
 
+def test_duration_seconds_handles_naive_and_aware_mix():
+    # SQLite drops tzinfo, so created_at can be naive while completed_at (freshly
+    # set by the poller) is aware. duration_seconds must not raise on the mix.
+    from datetime import UTC, datetime, timedelta
+
+    run = Run(issue_number=99, issue_title="x")
+    run.created_at = datetime(2026, 1, 1, 12, 0, 0)  # naive (as read from SQLite)
+    run.completed_at = datetime(2026, 1, 1, 12, 0, 5, tzinfo=UTC)  # aware
+    assert run.duration_seconds == 5.0
+    run.completed_at = run.created_at + timedelta(seconds=3)  # both naive
+    assert run.duration_seconds == 3.0
+
+
 def test_poll_marks_success_on_pass_verdict(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 1)
     # "exit" is the real v3 terminal status value.

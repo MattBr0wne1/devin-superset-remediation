@@ -14,6 +14,12 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Treat a stored datetime as UTC. SQLite drops tzinfo, so values read back
+    are naive even though we always write UTC; re-attach it before arithmetic."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -77,17 +83,14 @@ class Run(Base):
     def duration_seconds(self) -> float | None:
         if self.completed_at is None:
             return None
-        return (self.completed_at - self.created_at).total_seconds()
+        return (_as_utc(self.completed_at) - _as_utc(self.created_at)).total_seconds()
 
     @property
     def seconds_since_update(self) -> float | None:
         """Heartbeat age: seconds since Devin last reported activity."""
         if self.session_updated_at is None:
             return None
-        ref = self.session_updated_at
-        if ref.tzinfo is None:
-            ref = ref.replace(tzinfo=UTC)
-        return (datetime.now(UTC) - ref).total_seconds()
+        return (datetime.now(UTC) - _as_utc(self.session_updated_at)).total_seconds()
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -55,6 +55,11 @@ class DemoGitHub:
         self.comments.append((number, body))
         return {}
 
+    def find_pr_by_branch(self, branch: str) -> str | None:
+        # The session object already surfaces the PR in this demo, so the
+        # branch-lookup fallback is never needed.
+        return None
+
 
 def main() -> int:
     settings = Settings(db_path="demo.db", summary_path="summary.md",
