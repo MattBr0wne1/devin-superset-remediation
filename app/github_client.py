@@ -75,6 +75,26 @@ class GitHubClient:
         resp.raise_for_status()
         return resp.json()
 
+    # --- pull requests ---
+    def find_pr_by_branch(self, branch: str) -> str | None:
+        """Return the html_url of the PR opened from ``branch``, if any.
+
+        Lets the poller surface a PR as soon as it exists on GitHub, without
+        waiting for the Devin session object's ``pull_requests`` array to catch
+        up (which can lag or stay empty while the session waits on a human).
+        """
+        resp = self._http.get(
+            self._repo_url("pulls"),
+            headers=self._headers,
+            params={"head": f"{self.owner}:{branch}", "state": "all", "per_page": "1"},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+        if items:
+            return str(items[0].get("html_url")) or None
+        return None
+
     # --- repo administration ---
     def ensure_label(self, name: str, color: str = "5319e7", description: str = "") -> None:
         """Create the label if it does not already exist (idempotent)."""

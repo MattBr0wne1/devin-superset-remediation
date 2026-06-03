@@ -83,6 +83,21 @@ def test_poll_keeps_running_when_not_terminal(settings, session_factory, fake_de
         assert run.session_updated_at is not None
 
 
+def test_poll_discovers_pr_by_branch_when_session_lags(
+    settings, session_factory, fake_devin, fake_github
+):
+    # Session is still running with no pr_url, but a PR already exists on GitHub.
+    sid = _dispatch(settings, session_factory, fake_devin, fake_github, 7)
+    fake_github.prs_by_branch["devin/fix-issue-7"] = "https://github.com/x/y/pull/42"
+    fake_devin.set_state(sid, status="running", status_detail="waiting_for_user")
+    poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
+              settings=settings)
+    with session_factory() as db:
+        run = db.query(Run).one()
+        assert run.status == STATUS_RUNNING
+        assert run.pr_url == "https://github.com/x/y/pull/42"
+
+
 def test_poll_blocked_on_suspended(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 6)
     fake_devin.set_state(sid, status="suspended", status_detail="out_of_credits")

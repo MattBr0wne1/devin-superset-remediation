@@ -49,9 +49,13 @@ class FakeGitHub:
         self.comments: list[tuple[int, str]] = []
         self.created_issues: list[dict[str, Any]] = []
         self.labels: list[str] = []
+        self.prs_by_branch: dict[str, str] = {}
 
     def get_issue(self, number: int) -> dict[str, Any]:
         return self.issues[number]
+
+    def find_pr_by_branch(self, branch: str) -> str | None:
+        return self.prs_by_branch.get(branch)
 
     def comment_issue(self, number: int, body: str) -> dict[str, Any]:
         self.comments.append((number, body))

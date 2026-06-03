@@ -70,6 +70,17 @@ def reconcile_run(
         if not run.pr_url and so.get("pr_url"):
             run.pr_url = str(so["pr_url"])
 
+    # Fallback: discover the PR by its deterministic branch on GitHub when the
+    # session object hasn't surfaced it yet (e.g. session paused mid-run).
+    if not run.pr_url and github is not None:
+        try:
+            found = github.find_pr_by_branch(f"devin/fix-issue-{run.issue_number}")
+        except Exception:  # noqa: BLE001 - best-effort enrichment
+            found = None
+            logger.warning("PR lookup failed for issue #%s", run.issue_number, exc_info=True)
+        if found:
+            run.pr_url = found
+
     run.status = _derive_status(state)
     just_completed = run.status in TERMINAL_STATUSES and not was_terminal
     if just_completed:
