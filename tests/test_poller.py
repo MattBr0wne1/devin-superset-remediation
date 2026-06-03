@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.devin_client import _first_pr_url
 from app.dispatcher import handle_labeled_issue
 from app.models import (
     STATUS_BLOCKED,
@@ -12,6 +13,14 @@ from app.models import (
 )
 from app.poller import poll_once
 from tests.conftest import make_issue
+
+
+def test_first_pr_url_reads_v3_pr_url_key():
+    # Real v3 shape: list of {"pr_url": ..., "pr_state": ...}.
+    assert _first_pr_url([{"pr_url": "https://x/pull/4", "pr_state": "open"}]) == "https://x/pull/4"
+    assert _first_pr_url([{"url": "https://x/pull/5"}]) == "https://x/pull/5"
+    assert _first_pr_url([]) is None
+    assert _first_pr_url(None) is None
 
 
 def _dispatch(settings, session_factory, fake_devin, fake_github, number):

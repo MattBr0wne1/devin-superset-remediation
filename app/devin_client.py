@@ -141,5 +141,6 @@ def _first_pr_url(pull_requests: Any) -> str | None:
         return None
     first = pull_requests[0]
     if isinstance(first, dict):
-        return first.get("url") or first.get("html_url")
+        # v3 returns {"pr_url": ..., "pr_state": ...}; accept common aliases too.
+        return first.get("pr_url") or first.get("url") or first.get("html_url")
     return str(first)
