@@ -17,7 +17,7 @@ from .config import Settings
 from .devin_client import DevinClient
 from .github_client import GitHubClient
 from .models import STATUS_RUNNING, Run
-from .prompts import build_remediation_prompt
+from .prompts import build_remediation_prompt, verdict_json_schema
 
 logger = logging.getLogger("remediation.dispatcher")
 
@@ -58,6 +58,8 @@ def handle_labeled_issue(
         tags=["remediation", "superset", f"issue-{number}"],
         idempotent=True,
         create_as_user_id=settings.create_as_user_id,
+        structured_output_schema=verdict_json_schema(),
+        max_acu_limit=settings.max_acu_limit,
     )
 
     run.session_id = created.session_id

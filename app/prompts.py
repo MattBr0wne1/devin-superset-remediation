@@ -18,6 +18,32 @@ STRUCTURED_OUTPUT_SCHEMA = {
 }
 
 
+def verdict_json_schema() -> dict[str, Any]:
+    """Draft-7 JSON Schema enforced on the session's ``structured_output``.
+
+    Passing this to the Devin API makes the verdict contract machine-validated
+    rather than relying on the prompt alone.
+    """
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "required": ["verdict", "checks", "summary"],
+        "properties": {
+            "verdict": {"type": "string", "enum": ["pass", "fail"]},
+            "pr_url": {"type": "string"},
+            "checks": {
+                "type": "object",
+                "properties": {
+                    "precommit": {"type": "boolean"},
+                    "tests": {"type": "boolean"},
+                },
+                "required": ["precommit", "tests"],
+            },
+            "summary": {"type": "string"},
+        },
+    }
+
+
 def build_remediation_prompt(issue: dict[str, Any], repo: str, *, draft_pr: bool = True) -> str:
     """Build the instruction prompt for a single issue."""
     number = issue["number"]

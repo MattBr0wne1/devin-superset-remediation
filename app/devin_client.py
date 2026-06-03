@@ -81,6 +81,8 @@ class DevinClient:
         tags: list[str] | None = None,
         idempotent: bool = True,
         create_as_user_id: str | None = None,
+        structured_output_schema: dict[str, Any] | None = None,
+        max_acu_limit: int | None = None,
     ) -> CreatedSession:
         """Create a new Devin session and return its identifiers."""
         payload: dict[str, Any] = {"prompt": prompt, "idempotent": idempotent}
@@ -90,6 +92,10 @@ class DevinClient:
             payload["tags"] = tags
         if create_as_user_id:
             payload["create_as_user_id"] = create_as_user_id
+        if structured_output_schema is not None:
+            payload["structured_output_schema"] = structured_output_schema
+        if max_acu_limit is not None:
+            payload["max_acu_limit"] = max_acu_limit
 
         resp = self._http.post(
             self._sessions_url(),
