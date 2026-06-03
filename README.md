@@ -14,6 +14,19 @@ exposes a live dashboard, a metrics API, issue comments, and a Markdown report.
 > *and proves it green* before the PR is opened — the verdict (`pass`/`fail`) is
 > recorded as an objective signal.
 
+> **New here?** Start with the credential-free simulation in
+> [Quick start §0](#0-simulate-with-no-credentials) — it runs the whole pipeline
+> with no secrets. For depth see the docs below.
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flow, lifecycle
+  states, the SQLite store, stall self-healing, infrastructure footprint.
+- [docs/RUNNING.md](docs/RUNNING.md) — infrastructure + how to run in Docker,
+  full env-var reference, simulate vs live, seeding, triggering, troubleshooting.
+- [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md) — why each choice was made
+  (draft PRs, single trigger, verify-before-PR, observability, what was cut).
+
 ---
 
 ## Architecture
@@ -71,9 +84,10 @@ calling it with an issue payload — no changes to the core. `app/cli.py` expose
 
 ## Observability — "how an engineering leader knows it's working"
 
-- **`GET /dashboard`** — auto-refreshing HTML: per-run status, verdict, PR link,
-  ACUs, duration, session link, plus headline cards (total, in-flight, PRs,
-  success rate, cost-per-fix).
+- **`GET /dashboard`** — auto-refreshing HTML: per-run status, live
+  `status_detail`, a "last update Ns ago" heartbeat, verdict, PR link, ACUs,
+  duration, session link, plus headline cards (total, in-flight, PRs awaiting
+  review, stalled, **remediation rate**, verified pass, cost-per-fix).
 - **`GET /api/metrics`** — JSON: funnel counts, success rate, PR conversion,
   median/avg time-to-completion, total ACUs, and **cost-per-verified-fix**
   (real ACU usage read from each session's `acus_consumed`).
@@ -145,7 +159,8 @@ mis-converts on non-UTC hosts).
 
 See `.env.example`. Key variables: `DEVIN_API_KEY`, `DEVIN_ORG_ID`,
 `DEVIN_BASE_URL`, `CREATE_AS_USER_ID`, `GITHUB_TOKEN`, `REPO`, `TRIGGER_LABEL`,
-`WEBHOOK_SECRET`, `DB_PATH`, `SUMMARY_PATH`, `POLL_INTERVAL_SECONDS`.
+`WEBHOOK_SECRET`, `DB_PATH`, `SUMMARY_PATH`, `POLL_INTERVAL_SECONDS`,
+`STALL_SECONDS`. Full table in [docs/RUNNING.md §3](docs/RUNNING.md#3-configuration).
 
 ## Security notes
 - Webhook requests are verified with `X-Hub-Signature-256` (set `WEBHOOK_SECRET`).
