@@ -1,0 +1,27 @@
+services:
+  orchestrator:
+    build: .
+    image: devin-superset-remediation:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # Devin API
+      DEVIN_API_KEY: ${DEVIN_API_KEY:?set DEVIN_API_KEY}
+      DEVIN_ORG_ID: ${DEVIN_ORG_ID:?set DEVIN_ORG_ID}
+      DEVIN_BASE_URL: ${DEVIN_BASE_URL:-https://api.devin.ai/v3}
+      CREATE_AS_USER_ID: ${CREATE_AS_USER_ID:-}
+      # GitHub
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      REPO: ${REPO:-MattBr0wne1/superset}
+      TRIGGER_LABEL: ${TRIGGER_LABEL:-devin-fix}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      # Storage
+      DB_PATH: /data/remediation.db
+      SUMMARY_PATH: /data/summary.md
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-20}
+    volumes:
+      - remediation-data:/data
+    restart: unless-stopped
+
+volumes:
+  remediation-data:
