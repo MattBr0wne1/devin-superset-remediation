@@ -137,6 +137,32 @@ def _comment_terminal(run: Run, github: GitHubClient) -> None:
                        exc_info=True)
 
 
+_NUDGE = (
+    "Are you still working on this? I don't see recent progress. Please continue: "
+    "make the focused fix, verify it, and open the draft PR. If you're blocked, say why."
+)
+
+
+def _maybe_nudge_stalled(
+    run: Run, *, db: Session, devin: DevinClient, settings: Settings
+) -> None:
+    """Send one self-healing nudge to a running session that has gone silent."""
+    if run.status != STATUS_RUNNING or run.pr_url or run.nudged_at is not None:
+        return
+    age = run.seconds_since_update
+    if age is None or age < settings.stall_seconds:
+        return
+    try:
+        devin.send_message(str(run.session_id), _NUDGE)
+    except Exception:  # noqa: BLE001 - best-effort self-heal
+        logger.warning("Failed to nudge stalled session for issue #%s", run.issue_number,
+                       exc_info=True)
+        return
+    run.nudged_at = datetime.now(UTC)
+    db.commit()
+    logger.info("Nudged stalled session for issue #%s (idle %.0fs)", run.issue_number, age)
+
+
 def poll_once(
     *,
     session_factory: sessionmaker,
@@ -160,8 +186,11 @@ def poll_once(
                 continue
             if reconcile_run(run, state, db=db, github=github):
                 completed += 1
+            else:
+                _maybe_nudge_stalled(run, db=db, devin=devin, settings=settings)
         try:
-            render_summary_md(db, settings.summary_path, repo=settings.repo)
+            render_summary_md(db, settings.summary_path, repo=settings.repo,
+                               stall_seconds=settings.stall_seconds)
         except Exception:  # noqa: BLE001
             logger.warning("Failed to render summary", exc_info=True)
     return {"checked": checked, "completed": completed}

@@ -52,6 +52,8 @@ class Run(Base):
     status_detail: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Devin session's own last-activity time (heartbeat for liveness/staleness).
     session_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # When the poller sent a self-healing nudge to a stalled session (one-shot).
+    nudged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     acus_consumed: Mapped[float | None] = mapped_column(Float, nullable=True)
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
     pr_url: Mapped[str | None] = mapped_column(String(512), nullable=True)

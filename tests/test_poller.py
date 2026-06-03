@@ -112,6 +112,37 @@ def test_poll_discovers_pr_by_branch_when_session_lags(
     assert any("awaiting human review" in c[1] for c in fake_github.comments)
 
 
+def test_poll_nudges_stalled_session_once(settings, session_factory, fake_devin, fake_github):
+    import time
+
+    sid = _dispatch(settings, session_factory, fake_devin, fake_github, 9)
+    # Running, no PR, heartbeat older than the stall threshold -> should be nudged.
+    stale = int(time.time()) - (settings.stall_seconds + 120)
+    fake_devin.set_state(sid, status="running", status_detail="working",
+                         raw={"updated_at": stale})
+    poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
+              settings=settings)
+    assert len(fake_devin.messages) == 1
+    assert fake_devin.messages[0][0] == sid
+    with session_factory() as db:
+        assert db.query(Run).one().nudged_at is not None
+    # A second poll while still stalled must NOT nudge again (one-shot).
+    poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
+              settings=settings)
+    assert len(fake_devin.messages) == 1
+
+
+def test_poll_does_not_nudge_fresh_session(settings, session_factory, fake_devin, fake_github):
+    import time
+
+    sid = _dispatch(settings, session_factory, fake_devin, fake_github, 10)
+    fake_devin.set_state(sid, status="running", status_detail="working",
+                         raw={"updated_at": int(time.time())})
+    poll_once(session_factory=session_factory, devin=fake_devin, github=fake_github,
+              settings=settings)
+    assert fake_devin.messages == []
+
+
 def test_poll_blocked_on_suspended(settings, session_factory, fake_devin, fake_github):
     sid = _dispatch(settings, session_factory, fake_devin, fake_github, 6)
     fake_devin.set_state(sid, status="suspended", status_detail="out_of_credits")

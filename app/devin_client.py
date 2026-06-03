@@ -115,6 +115,32 @@ class DevinClient:
             status=data.get("status"),
         )
 
+    @staticmethod
+    def _devin_id(session_id: str) -> str:
+        """The v3 path form: the session id prefixed with ``devin-``."""
+        return session_id if session_id.startswith("devin-") else f"devin-{session_id}"
+
+    def send_message(self, session_id: str, message: str) -> None:
+        """Send a message to a session (auto-resumes it if suspended/idle)."""
+        resp = self._http.post(
+            f"{self._sessions_url()}/{self._devin_id(session_id)}/messages",
+            headers=self._headers,
+            json={"message": message},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+
+    def terminate_session(self, session_id: str, *, archive: bool = False) -> None:
+        """Terminate a session. ``session_id`` may be raw or ``devin-`` prefixed."""
+        devin_id = self._devin_id(session_id)
+        resp = self._http.delete(
+            f"{self._sessions_url()}/{devin_id}",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            params={"archive": str(archive).lower()},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+
     def get_session(self, session_id: str) -> SessionState:
         """Fetch the current state of a session."""
         resp = self._http.get(

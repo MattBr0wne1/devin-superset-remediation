@@ -18,6 +18,14 @@ class FakeDevin:
         self.created: list[dict[str, Any]] = []
         self._states: dict[str, SessionState] = {}
         self._counter = 0
+        self.messages: list[tuple[str, str]] = []
+        self.terminated: list[str] = []
+
+    def send_message(self, session_id: str, message: str) -> None:
+        self.messages.append((session_id, message))
+
+    def terminate_session(self, session_id: str, *, archive: bool = False) -> None:
+        self.terminated.append(session_id)
 
     def create_session(self, prompt: str, **kwargs: Any) -> CreatedSession:
         self._counter += 1

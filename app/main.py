@@ -124,12 +124,12 @@ def create_app(
     @app.get("/api/metrics")
     def metrics() -> dict[str, Any]:
         with session_factory() as db:
-            return compute_metrics(db)
+            return compute_metrics(db, stall_seconds=settings.stall_seconds)
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard() -> str:
         with session_factory() as db:
-            m = compute_metrics(db)
+            m = compute_metrics(db, stall_seconds=settings.stall_seconds)
             runs = [r.to_dict() for r in
                     db.execute(select(Run).order_by(Run.issue_number)).scalars().all()]
         return _render_dashboard(m, runs, settings)
@@ -157,10 +157,16 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
             detail_cell = '<span style="color:#8250df;font-weight:600">awaiting review/merge</span>'
         else:
             detail = r.get("status_detail") or "—"
+            age0 = r.get("seconds_since_update")
+            stalled = (r["status"] == "running" and not r["pr_url"]
+                       and age0 is not None and age0 > settings.stall_seconds)
             attn = detail in ("waiting_for_user", "waiting_for_approval")
-            detail_cell = (
-                f'<span style="color:#bf8700;font-weight:600">{detail}</span>' if attn else detail
-            )
+            if stalled:
+                detail_cell = '<span style="color:#cf222e;font-weight:600">stalled</span>'
+            elif attn:
+                detail_cell = f'<span style="color:#bf8700;font-weight:600">{detail}</span>'
+            else:
+                detail_cell = detail
         age = r.get("seconds_since_update")
         last = f"{age:.0f}s ago" if age is not None else "—"
         rows.append(
@@ -179,6 +185,7 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
         (metrics["total_runs"], "Total runs"),
         (metrics["in_flight"], "In flight"),
         (metrics.get("awaiting_review", 0), "PR awaiting review"),
+        (metrics.get("stalled", 0), "Stalled"),
         (metrics.get("needs_attention", 0), "Needs attention"),
         (metrics["pr_count"], "PRs opened"),
         (metrics["succeeded"], "Succeeded"),

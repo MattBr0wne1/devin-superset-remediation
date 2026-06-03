@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     summary_path: str = "summary.md"
     # Open PRs as drafts for human review (instruction passed to the session).
     draft_pr: bool = True
+    # A running session whose heartbeat is older than this (and which has no PR
+    # yet) is treated as stalled. The poller sends a single auto-nudge to try to
+    # self-heal it; if still stale it is surfaced as "stalled" in observability.
+    stall_seconds: int = 360
 
     @property
     def sessions_url(self) -> str:

@@ -30,7 +30,7 @@ ALL_STATUSES = [
 ]
 
 
-def compute_metrics(db: Session) -> dict[str, Any]:
+def compute_metrics(db: Session, *, stall_seconds: int = 360) -> dict[str, Any]:
     """Aggregate run-level metrics that answer 'is this working?'."""
     runs = list(db.execute(select(Run)).scalars().all())
     total = len(runs)
@@ -55,14 +55,21 @@ def compute_metrics(db: Session) -> dict[str, Any]:
     # waiting_for_user / waiting_for_approval / ...) so a stuck run is obvious.
     in_flight_detail: dict[str, int] = {}
     needs_attention = 0
+    stalled = 0
     for r in runs:
         if r.status != STATUS_RUNNING:
             continue
         detail = r.status_detail or "unknown"
         in_flight_detail[detail] = in_flight_detail.get(detail, 0) + 1
-        # Only flag a session that is paused on input AND has no PR yet — a
-        # raised PR is the goal (it lives under "awaiting review"), not a problem.
-        if detail in ("waiting_for_user", "waiting_for_approval") and not r.pr_url:
+        age = r.seconds_since_update
+        is_stalled = (not r.pr_url) and age is not None and age > stall_seconds
+        if is_stalled:
+            stalled += 1
+        # Flag a session that needs a human's eyes: paused on input, or silently
+        # stalled. A raised PR is the goal (it lives under "awaiting review").
+        if not r.pr_url and (
+            detail in ("waiting_for_user", "waiting_for_approval") or is_stalled
+        ):
             needs_attention += 1
 
     return {
@@ -84,12 +91,13 @@ def compute_metrics(db: Session) -> dict[str, Any]:
         "cost_per_fix_acus": round(cost_per_fix, 2) if cost_per_fix is not None else None,
         "in_flight_detail": in_flight_detail,
         "needs_attention": needs_attention,
+        "stalled": stalled,
     }
 
 
-def render_summary_md(db: Session, path: str, *, repo: str = "") -> str:
+def render_summary_md(db: Session, path: str, *, repo: str = "", stall_seconds: int = 360) -> str:
     """Write a Markdown report (funnel + per-run table) and return its text."""
-    m = compute_metrics(db)
+    m = compute_metrics(db, stall_seconds=stall_seconds)
     runs = list(db.execute(select(Run).order_by(Run.issue_number)).scalars().all())
 
     def pct(x: float) -> str:

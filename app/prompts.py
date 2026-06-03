@@ -33,10 +33,15 @@ Requirements:
 2. Implement the minimal, focused change that resolves the issue. Do not make
    unrelated changes.
 3. Verify your change before opening a PR:
-   - Run `pre-commit run --all-files` and make it pass (formatting, ruff, mypy).
+   - Stage your edits (`git add`) and run pre-commit on ONLY the files you changed:
+     `pre-commit run --files <your changed files>` and make it pass (formatting,
+     ruff, mypy). Do NOT run `--all-files` — on this repo it scans thousands of
+     files and can take far too long; the changed-file run validates the same hooks
+     for your edit.
    - Run the tests relevant to the files you touched and make them pass.
    - Do not open a PR until verification is green; if you cannot get it green,
      report verdict "fail" with the reason.
+   - Work continuously to completion — do not pause to ask for confirmation.
 4. Open {draft} into `{repo}` whose description includes "Fixes #{number}".
 5. When finished, set the session's `structured_output` to EXACTLY this JSON shape:
    {{
