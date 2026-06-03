@@ -39,8 +39,6 @@ class Settings(BaseSettings):
     summary_path: str = "summary.md"
     # Open PRs as drafts for human review (instruction passed to the session).
     draft_pr: bool = True
-    # Optional safety cap on ACUs each remediation session may consume.
-    max_acu_limit: int | None = None
 
     @property
     def sessions_url(self) -> str:

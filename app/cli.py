@@ -1,4 +1,4 @@
-"""Command-line entry point used by the GitHub Actions trigger and for ops.
+"""Command-line entry point for ops and manual/automated replay.
 
 Subcommands:
   dispatch --issue N   Fetch issue N and start a remediation session.
@@ -25,7 +25,7 @@ from .reporting import compute_metrics, render_summary_md
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
-def _cmd_dispatch(issue_number: int) -> int:
+def _cmd_dispatch(issue_number: int, force: bool = False) -> int:
     settings = get_settings()
     session_factory = make_session_factory(settings.database_url)
     devin, github = build_clients(settings)
@@ -33,7 +33,8 @@ def _cmd_dispatch(issue_number: int) -> int:
         github = GitHubClient(settings.github_token, settings.repo)
     issue = github.get_issue(issue_number)
     with session_factory() as db:
-        run = handle_labeled_issue(issue, db=db, devin=devin, github=github, settings=settings)
+        run = handle_labeled_issue(issue, db=db, devin=devin, github=github,
+                                   settings=settings, force=force)
         print(json.dumps(run.to_dict(), indent=2))
     return 0
 
@@ -67,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_dispatch = sub.add_parser("dispatch", help="Start a remediation session for an issue")
     p_dispatch.add_argument("--issue", type=int, required=True)
+    p_dispatch.add_argument("--force", action="store_true",
+                            help="Re-trigger even if a run already exists for this issue")
 
     p_poll = sub.add_parser("poll", help="Reconcile active runs with live sessions")
     p_poll.add_argument("--loop", action="store_true")
@@ -75,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "dispatch":
-        return _cmd_dispatch(args.issue)
+        return _cmd_dispatch(args.issue, args.force)
     if args.command == "poll":
         return _cmd_poll(args.loop)
     if args.command == "report":

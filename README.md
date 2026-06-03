@@ -23,11 +23,11 @@ exposes a live dashboard, a metrics API, issue comments, and a Markdown report.
    label "devin-fix"   │                Orchestrator                   │
   ───────────────────► │                                              │
   (GitHub issue)       │  ┌────────────┐   ┌──────────────┐           │
-        │              │  │  Trigger   │──►│  dispatcher  │            │
-        │              │  │ (webhook   │   │ (idempotent) │            │
-        ├─ webhook ───►│  │  or GH     │   └──────┬───────┘            │
-        │              │  │  Actions)  │          │ create_session     │
-        └─ GH Action ─►│  └────────────┘          ▼                    │
+        │              │  │  webhook   │──►│  dispatcher  │            │
+        └─ webhook ───►│  │  handler   │   │ (idempotent) │            │
+                       │  └────────────┘   └──────┬───────┘            │
+                       │                          │ create_session     │
+                       │                          ▼                    │
                        │                   ┌──────────────┐  Devin v3   │
                        │                   │ DevinClient  │────────────►│ api.devin.ai
                        │   ┌───────────┐   └──────┬───────┘            │
@@ -44,15 +44,14 @@ exposes a live dashboard, a metrics API, issue comments, and a Markdown report.
                                       MattBr0wne1/superset (the fork)
 ```
 
-Two interchangeable **event sources** call the *same* `dispatcher.handle_labeled_issue`:
+**One trigger:** a `devin-fix`-labeled issue is delivered to the **FastAPI webhook**
+`POST /webhooks/github-issue` (HMAC-verified), which calls
+`dispatcher.handle_labeled_issue`.
 
-1. **FastAPI webhook** — `POST /webhooks/github-issue` (HMAC-verified). Best for a
-   live, always-on service with the dashboard.
-2. **GitHub Actions** — `.github/workflows/devin-remediation.yml` runs on
-   `issues.labeled` and calls `python -m app.cli dispatch`. No hosting required.
-
-A new scanner (Snyk, Dependabot, custom) "slots into the same handler" by calling
-the dispatcher with an issue payload — no changes to the core.
+The dispatcher is deliberately trigger-agnostic, so any other event source (a Snyk
+or Dependabot scan, a cron job, a CLI replay) "slots into the same handler" by
+calling it with an issue payload — no changes to the core. `app/cli.py` exposes
+`dispatch` / `poll` / `report` for exactly this kind of manual/automated replay.
 
 ## Components
 
@@ -66,7 +65,7 @@ the dispatcher with an issue payload — no changes to the core.
 | `app/poller.py` | Background loop: reconcile sessions → status/verdict/PR, comment back |
 | `app/reporting.py` | Metrics aggregation + `summary.md` report |
 | `app/models.py` | SQLite `Run` model (the observability store) |
-| `app/cli.py` | `dispatch` / `poll` / `report` commands (used by GH Actions) |
+| `app/cli.py` | `dispatch` / `poll` / `report` ops commands (manual replay) |
 | `scripts/seed_issues.py` | Creates the `devin-fix` label and the Part-1 issues |
 | `scripts/demo.py` | **Credential-free simulation** of the whole pipeline |
 
@@ -117,9 +116,9 @@ python -m scripts.seed_issues               # create label + issues
 ```
 
 ### 4. Trigger remediation
-- **Via GitHub:** add the `devin-fix` label to an issue (fires the webhook or the
-  GitHub Action).
-- **Via CLI:** `python -m app.cli dispatch --issue <N>`
+- **Via GitHub (the trigger):** add the `devin-fix` label to an issue — GitHub
+  delivers the `issues.labeled` event to the webhook.
+- **Via CLI (manual replay):** `python -m app.cli dispatch --issue <N>`
 - **Via webhook (manual):**
   ```bash
   curl -X POST localhost:8000/webhooks/github-issue \

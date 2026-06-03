@@ -17,7 +17,7 @@ from .config import Settings
 from .devin_client import DevinClient
 from .github_client import GitHubClient
 from .models import STATUS_RUNNING, Run
-from .prompts import build_remediation_prompt, verdict_json_schema
+from .prompts import build_remediation_prompt
 
 logger = logging.getLogger("remediation.dispatcher")
 
@@ -33,19 +33,25 @@ def handle_labeled_issue(
     devin: DevinClient,
     github: GitHubClient | None,
     settings: Settings,
+    force: bool = False,
 ) -> Run:
     """Create (or return an existing) remediation run for a labeled issue.
 
     Idempotent: a second label event for the same issue returns the existing run
-    instead of spawning a duplicate session.
+    instead of spawning a duplicate session. Pass ``force=True`` to discard the
+    existing run and deliberately re-trigger a fresh session.
     """
     number = int(issue["number"])
     title = issue.get("title", "")
 
     existing = get_run_for_issue(db, number)
     if existing is not None:
-        logger.info("Issue #%s already has run %s; skipping duplicate", number, existing.id)
-        return existing
+        if not force:
+            logger.info("Issue #%s already has run %s; skipping duplicate", number, existing.id)
+            return existing
+        logger.info("Issue #%s: force re-trigger, discarding run %s", number, existing.id)
+        db.delete(existing)
+        db.flush()
 
     run = Run(issue_number=number, issue_title=title)
     db.add(run)
@@ -58,8 +64,6 @@ def handle_labeled_issue(
         tags=["remediation", "superset", f"issue-{number}"],
         idempotent=True,
         create_as_user_id=settings.create_as_user_id,
-        structured_output_schema=verdict_json_schema(),
-        max_acu_limit=settings.max_acu_limit,
     )
 
     run.session_id = created.session_id

@@ -34,6 +34,19 @@ def test_dispatch_is_idempotent(settings, session_factory, fake_devin, fake_gith
     assert len(fake_devin.created) == 1  # no duplicate session
 
 
+def test_dispatch_force_retriggers(settings, session_factory, fake_devin, fake_github):
+    issue = make_issue(number=7)
+    with session_factory() as db:
+        run1 = handle_labeled_issue(issue, db=db, devin=fake_devin, github=fake_github,
+                                    settings=settings)
+        assert run1.session_id == "devin-1"
+    with session_factory() as db:
+        run2 = handle_labeled_issue(issue, db=db, devin=fake_devin, github=fake_github,
+                                    settings=settings, force=True)
+        assert run2.session_id == "devin-2"  # a fresh session replaced the old run
+    assert len(fake_devin.created) == 2
+
+
 def test_dispatch_without_github(settings, session_factory, fake_devin):
     issue = make_issue(number=9)
     with session_factory() as db:
