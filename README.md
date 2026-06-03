@@ -99,6 +99,8 @@ calling it with an issue payload — no changes to the core. `app/cli.py` expose
 
 ## Quick start
 
+> Everything runs in Docker — there is no separate local/host setup to maintain.
+
 ### 0. Simulate with no credentials (recommended first look)
 
 The fastest way to see the whole pipeline (dispatcher → poller → reporting) work,
@@ -107,16 +109,8 @@ terminates its fake sessions with scripted verdicts, so it populates the exact
 columns a live run fills on termination — verdict, PR, ACUs, duration, and
 cost-per-verified-fix.
 
-```bash
-pip install -e ".[dev]"
-python -m scripts.demo        # runs dispatcher+poller+reporting with fakes
-cat summary.md
-pytest                        # full unit-test suite (no network)
-```
-
-Or inside Docker, still with no secrets (build the image, then run the demo —
-this bypasses `docker compose`, which requires Devin credentials for the live
-service):
+Build the image, then run the demo. This bypasses `docker compose` (which
+requires Devin credentials for the live service) so it runs with no secrets:
 ```bash
 docker build -t devin-superset-remediation .
 docker run --rm --entrypoint python devin-superset-remediation -m scripts.demo
@@ -133,33 +127,39 @@ docker compose up --build
 # open http://localhost:8000/dashboard  and  http://localhost:8000/healthz
 ```
 
-The container runs `uvicorn` on port 8000 and persists the SQLite store +
-`summary.md` to the named volume `remediation-data` (mounted at `/data`), so run
-history survives restarts. `docker-compose.yml` requires `DEVIN_API_KEY` and
-`DEVIN_ORG_ID` and defaults the rest. `/healthz` reports readiness:
+`docker compose` automatically reads the `.env` file from the project directory
+and injects those variables into the container. The container runs `uvicorn` on
+port 8000 and persists the SQLite store + `summary.md` to the named volume
+`remediation-data` (mounted at `/data`), so run history survives restarts.
+`docker-compose.yml` requires `DEVIN_API_KEY` and `DEVIN_ORG_ID` and defaults the
+rest. `/healthz` reports readiness:
 
 ```json
 {"ok": true, "repo": "MattBr0wne1/superset", "trigger_label": "devin-fix",
  "devin_configured": true, "github_configured": true}
 ```
 
-Or locally (no Docker):
-```bash
-uvicorn app.main:app --reload
-```
-
 ### 3. Author the Part-1 issues on the fork
+Only needed if the issues don't exist yet (the demo issues are already seeded on
+the fork). Requires the fork's Issues tab enabled and a valid `GITHUB_TOKEN`:
 ```bash
-# Requires the fork's Issues tab to be enabled and a token with repo scope.
-python -m scripts.seed_issues --dry-run     # preview
-python -m scripts.seed_issues               # create label + issues
+docker compose exec orchestrator python -m scripts.seed_issues --dry-run   # preview
+docker compose exec orchestrator python -m scripts.seed_issues             # create label + issues
 ```
 
 ### 4. Trigger remediation
-- **Via GitHub (the trigger):** add the `devin-fix` label to an issue — GitHub
-  delivers the `issues.labeled` event to the webhook.
-- **Via CLI (manual replay):** `python -m app.cli dispatch --issue <N>`
-- **Via webhook (manual):**
+- **Via CLI inside the container (simplest local-Docker path):**
+  ```bash
+  docker compose exec orchestrator python -m app.cli dispatch --issue <N>
+  ```
+  > Requires a **valid** `GITHUB_TOKEN` in `.env`: the CLI reads the issue from
+  > GitHub before creating the session. (A GitHub App `ghs_…` token expires
+  > hourly — use a Personal Access Token with `repo` scope so it doesn't lapse
+  > mid-run.)
+- **Via GitHub label (the event-driven trigger):** add the `devin-fix` label to
+  an issue — GitHub delivers the `issues.labeled` event to the webhook. (Needs
+  the container's port publicly reachable + a webhook registered on the repo.)
+- **Via webhook (manual, no token needed — issue is in the payload):**
   ```bash
   curl -X POST localhost:8000/webhooks/github-issue \
     -H 'X-GitHub-Event: issues' -H 'Content-Type: application/json' \
@@ -168,9 +168,32 @@ python -m scripts.seed_issues               # create label + issues
   ```
 
 ### 5. Watch it work
+The service's background poller reconciles automatically; open
+`http://localhost:8000/dashboard`. To run the ops commands manually inside the
+container:
 ```bash
-python -m app.cli poll --loop        # or rely on the service's background poller
-python -m app.cli report             # regenerate summary.md + print metrics
+docker compose exec orchestrator python -m app.cli report   # regenerate summary.md + print metrics
+docker compose logs -f orchestrator                         # follow the poller's state transitions
+```
+
+### End-to-end worked example (local Docker)
+The full path for triggering the three seeded issues from your own machine:
+```bash
+git clone https://github.com/MattBr0wne1/devin-superset-remediation.git
+cd devin-superset-remediation && git checkout feat/orchestrator
+
+cp .env.example .env        # then edit .env, e.g.:
+#   DEVIN_API_KEY=cog_...           (Devin → Settings → API keys)
+#   DEVIN_ORG_ID=org-...            (your Devin org id)
+#   GITHUB_TOKEN=ghp_...            (PAT, repo scope — read issues + comment)
+#   REPO=MattBr0wne1/superset
+#   TRIGGER_LABEL=devin-fix
+
+docker compose up -d --build                                   # start service + poller + dashboard
+docker compose exec orchestrator python -m app.cli dispatch --issue 7
+docker compose exec orchestrator python -m app.cli dispatch --issue 8
+docker compose exec orchestrator python -m app.cli dispatch --issue 9
+# watch http://localhost:8000/dashboard — each issue → a real Devin session → draft PR
 ```
 
 ## The Part-1 issues
