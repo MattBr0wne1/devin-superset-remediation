@@ -114,9 +114,12 @@ cat summary.md
 pytest                        # full unit-test suite (no network)
 ```
 
-Or inside Docker, still with no secrets:
+Or inside Docker, still with no secrets (build the image, then run the demo —
+this bypasses `docker compose`, which requires Devin credentials for the live
+service):
 ```bash
-docker compose run --rm --no-deps --entrypoint python orchestrator -m scripts.demo
+docker build -t devin-superset-remediation .
+docker run --rm --entrypoint python devin-superset-remediation -m scripts.demo
 ```
 
 ### 1. Configure
