@@ -13,6 +13,7 @@ from .models import (
     STATUS_BLOCKED,
     STATUS_DISPATCHED,
     STATUS_FAILED,
+    STATUS_PR_OPEN,
     STATUS_RUNNING,
     STATUS_SUCCEEDED,
     TERMINAL_STATUSES,
@@ -22,6 +23,7 @@ from .models import (
 ALL_STATUSES = [
     STATUS_DISPATCHED,
     STATUS_RUNNING,
+    STATUS_PR_OPEN,
     STATUS_SUCCEEDED,
     STATUS_FAILED,
     STATUS_BLOCKED,
@@ -38,6 +40,7 @@ def compute_metrics(db: Session) -> dict[str, Any]:
 
     terminal = sum(by_status[s] for s in TERMINAL_STATUSES)
     succeeded = by_status[STATUS_SUCCEEDED]
+    awaiting_review = by_status[STATUS_PR_OPEN]
     pr_count = sum(1 for r in runs if r.pr_url)
     durations = [r.duration_seconds for r in runs if r.duration_seconds is not None]
 
@@ -57,7 +60,9 @@ def compute_metrics(db: Session) -> dict[str, Any]:
             continue
         detail = r.status_detail or "unknown"
         in_flight_detail[detail] = in_flight_detail.get(detail, 0) + 1
-        if detail in ("waiting_for_user", "waiting_for_approval"):
+        # Only flag a session that is paused on input AND has no PR yet — a
+        # raised PR is the goal (it lives under "awaiting review"), not a problem.
+        if detail in ("waiting_for_user", "waiting_for_approval") and not r.pr_url:
             needs_attention += 1
 
     return {
@@ -65,6 +70,7 @@ def compute_metrics(db: Session) -> dict[str, Any]:
         "total_runs": total,
         "by_status": by_status,
         "in_flight": by_status[STATUS_DISPATCHED] + by_status[STATUS_RUNNING],
+        "awaiting_review": awaiting_review,
         "terminal": terminal,
         "succeeded": succeeded,
         "failed": by_status[STATUS_FAILED],
@@ -102,6 +108,7 @@ def render_summary_md(db: Session, path: str, *, repo: str = "") -> str:
     lines.append("| --- | --- |")
     lines.append(f"| Issues dispatched | {m['total_runs']} |")
     lines.append(f"| In flight | {m['in_flight']} |")
+    lines.append(f"| PR open (awaiting review) | {m['awaiting_review']} |")
     lines.append(f"| Completed | {m['terminal']} |")
     lines.append(f"| PRs opened | {m['pr_count']} |")
     lines.append(f"| Succeeded (verified) | {m['succeeded']} |")

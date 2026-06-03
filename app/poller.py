@@ -14,8 +14,10 @@ from .config import Settings
 from .devin_client import DevinClient, SessionState
 from .github_client import GitHubClient
 from .models import (
+    ACTIVE_STATUSES,
     STATUS_BLOCKED,
     STATUS_FAILED,
+    STATUS_PR_OPEN,
     STATUS_RUNNING,
     STATUS_SUCCEEDED,
     TERMINAL_STATUSES,
@@ -26,10 +28,12 @@ from .reporting import render_summary_md
 logger = logging.getLogger("remediation.poller")
 
 
-def _derive_status(state: SessionState) -> str:
+def _derive_status(state: SessionState, *, has_pr: bool) -> str:
     """Map a Devin session snapshot onto an orchestrator lifecycle status."""
     if not state.is_terminal:
-        return STATUS_RUNNING
+        # A raised PR means the automation delivered; a human now owns review.
+        # Surface that clearly instead of the ambiguous "waiting_for_user".
+        return STATUS_PR_OPEN if has_pr else STATUS_RUNNING
     verdict = ""
     if isinstance(state.structured_output, dict):
         verdict = str(state.structured_output.get("verdict", "")).lower()
@@ -81,15 +85,36 @@ def reconcile_run(
         if found:
             run.pr_url = found
 
-    run.status = _derive_status(state)
+    prev_status = run.status
+    run.status = _derive_status(state, has_pr=bool(run.pr_url))
     just_completed = run.status in TERMINAL_STATUSES and not was_terminal
+    just_pr_open = run.status == STATUS_PR_OPEN and prev_status != STATUS_PR_OPEN
     if just_completed:
         run.completed_at = datetime.now(UTC)
     db.commit()
 
-    if just_completed and github is not None:
-        _comment_terminal(run, github)
+    if github is not None:
+        if just_completed:
+            _comment_terminal(run, github)
+        elif just_pr_open:
+            _comment_pr_open(run, github)
     return just_completed
+
+
+def _comment_pr_open(run: Run, github: GitHubClient) -> None:
+    lines = [
+        f"🔀 Devin raised a draft pull request for issue #{run.issue_number} — "
+        f"**awaiting human review/merge**.",
+    ]
+    if run.pr_url:
+        lines.append(f"Pull request: {run.pr_url}")
+    if run.session_url:
+        lines.append(f"Session: {run.session_url}")
+    try:
+        github.comment_issue(run.issue_number, "\n\n".join(lines))
+    except Exception:  # noqa: BLE001 - best-effort
+        logger.warning("Failed to post pr-open comment for issue #%s", run.issue_number,
+                       exc_info=True)
 
 
 def _comment_terminal(run: Run, github: GitHubClient) -> None:
@@ -124,7 +149,7 @@ def poll_once(
     checked = 0
     with session_factory() as db:
         active = db.execute(
-            select(Run).where(Run.status == STATUS_RUNNING, Run.session_id.is_not(None))
+            select(Run).where(Run.status.in_(ACTIVE_STATUSES), Run.session_id.is_not(None))
         ).scalars().all()
         for run in active:
             checked += 1

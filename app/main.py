@@ -148,21 +148,26 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
         acus = r["acus_consumed"] if r["acus_consumed"] is not None else "—"
         badge = {
             "succeeded": "#2da44e", "failed": "#cf222e", "blocked": "#bf8700",
-            "running": "#0969da", "dispatched": "#57606a",
+            "running": "#0969da", "dispatched": "#57606a", "pr_open": "#8250df",
         }.get(r["status"], "#57606a")
-        detail = r.get("status_detail") or "—"
-        # Highlight runs that are paused waiting on a human.
-        attn = detail in ("waiting_for_user", "waiting_for_approval")
-        detail_cell = (
-            f'<span style="color:#bf8700;font-weight:600">{detail}</span>' if attn else detail
-        )
+        status_label = "PR open" if r["status"] == "pr_open" else r["status"]
+        if r["status"] == "pr_open":
+            # Once a PR is raised, the meaningful state is "awaiting human review",
+            # not the raw session detail (e.g. waiting_for_user).
+            detail_cell = '<span style="color:#8250df;font-weight:600">awaiting review/merge</span>'
+        else:
+            detail = r.get("status_detail") or "—"
+            attn = detail in ("waiting_for_user", "waiting_for_approval")
+            detail_cell = (
+                f'<span style="color:#bf8700;font-weight:600">{detail}</span>' if attn else detail
+            )
         age = r.get("seconds_since_update")
         last = f"{age:.0f}s ago" if age is not None else "—"
         rows.append(
             f"<tr><td>#{r['issue_number']}</td>"
             f"<td>{r['issue_title']}</td>"
             f'<td><span style="background:{badge};color:#fff;padding:2px 8px;'
-            f'border-radius:10px;font-size:12px">{r["status"]}</span></td>'
+            f'border-radius:10px;font-size:12px">{status_label}</span></td>'
             f"<td>{detail_cell}</td><td>{last}</td>"
             f"<td>{r['verdict'] or '—'}</td><td>{pr}</td><td>{acus}</td>"
             f"<td>{dur}</td><td>{sess}</td></tr>"
@@ -173,6 +178,7 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
     cards_data = [
         (metrics["total_runs"], "Total runs"),
         (metrics["in_flight"], "In flight"),
+        (metrics.get("awaiting_review", 0), "PR awaiting review"),
         (metrics.get("needs_attention", 0), "Needs attention"),
         (metrics["pr_count"], "PRs opened"),
         (metrics["succeeded"], "Succeeded"),

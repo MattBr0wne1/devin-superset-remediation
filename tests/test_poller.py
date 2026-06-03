@@ -7,6 +7,7 @@ from app.dispatcher import handle_labeled_issue
 from app.models import (
     STATUS_BLOCKED,
     STATUS_FAILED,
+    STATUS_PR_OPEN,
     STATUS_RUNNING,
     STATUS_SUCCEEDED,
     Run,
@@ -103,8 +104,12 @@ def test_poll_discovers_pr_by_branch_when_session_lags(
               settings=settings)
     with session_factory() as db:
         run = db.query(Run).one()
-        assert run.status == STATUS_RUNNING
+        # A raised PR flips the run to the clear "PR open / awaiting review" state,
+        # not the ambiguous raw "waiting_for_user".
+        assert run.status == STATUS_PR_OPEN
         assert run.pr_url == "https://github.com/x/y/pull/42"
+    # a one-time "PR raised, awaiting review" comment is posted
+    assert any("awaiting human review" in c[1] for c in fake_github.comments)
 
 
 def test_poll_blocked_on_suspended(settings, session_factory, fake_devin, fake_github):

@@ -21,10 +21,15 @@ class Base(DeclarativeBase):
 # Orchestrator-level lifecycle status (distinct from Devin's status_enum).
 STATUS_DISPATCHED = "dispatched"
 STATUS_RUNNING = "running"
+# A draft PR has been raised; the automation's job is done and a human owns the
+# review/merge. Non-terminal because the session may still finalize a verdict.
+STATUS_PR_OPEN = "pr_open"
 STATUS_SUCCEEDED = "succeeded"
 STATUS_FAILED = "failed"
 STATUS_BLOCKED = "blocked"
 
+# Runs the poller still needs to reconcile each tick (work may yet change).
+ACTIVE_STATUSES = {STATUS_DISPATCHED, STATUS_RUNNING, STATUS_PR_OPEN}
 TERMINAL_STATUSES = {STATUS_SUCCEEDED, STATUS_FAILED, STATUS_BLOCKED}
 
 
