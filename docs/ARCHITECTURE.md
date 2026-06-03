@@ -173,5 +173,5 @@ No core changes are needed to add a transport — only a new caller.
   reach it, the port must be publicly reachable (tunnel/ingress) and a webhook
   registered on the fork; otherwise use the CLI/manual-webhook replay path.
 
-See [RUNNING.md](RUNNING.md) for how to run it and [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)
-for the rationale behind these choices.
+See the [README](../README.md) for how to run/simulate it and
+[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) for the rationale behind these choices.
