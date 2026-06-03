@@ -32,6 +32,9 @@ Requirements:
 1. Clone/checkout `{repo}` and create a new branch named `devin/fix-issue-{number}`.
 2. Implement the minimal, focused change that resolves the issue. Do not make
    unrelated changes.
+   - If you add any NEW source file, prepend the standard Apache Software
+     Foundation (ASF) license header — this repo's license check (RAT) fails any
+     new file without it.
 3. Verify your change before opening a PR:
    - Stage your edits (`git add`) and run pre-commit on ONLY the files you changed:
      `pre-commit run --files <your changed files>` and make it pass (formatting,
@@ -42,7 +45,14 @@ Requirements:
    - Do not open a PR until verification is green; if you cannot get it green,
      report verdict "fail" with the reason.
    - Work continuously to completion — do not pause to ask for confirmation.
-4. Open {draft} into `{repo}` whose description includes "Fixes #{number}".
+   - Post a brief one-line progress message at each milestone (e.g. "cloned",
+     "fix applied", "pre-commit green", "PR opened"). This keeps the session's
+     heartbeat fresh so the orchestrator can tell you are progressing rather than
+     stalled.
+4. Open {draft} into `{repo}`. The PR TITLE must follow Conventional Commits —
+   `type(scope): description` (types: fix, feat, docs, refactor, perf, test,
+   chore) — because this repo enforces it in CI. The PR description must include
+   "Fixes #{number}".
 5. When finished, set the session's `structured_output` to EXACTLY this JSON shape:
    {{
      "verdict": "pass" or "fail",
