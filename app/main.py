@@ -179,7 +179,7 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
             f"<td>{dur}</td><td>{sess}</td></tr>"
         )
     table = "\n".join(rows) or '<tr><td colspan="10">No runs yet</td></tr>'
-    sr = metrics["success_rate"] * 100
+    rr = metrics["pr_rate"] * 100
     cpf = metrics["cost_per_fix_acus"]
     cards_data = [
         (metrics["total_runs"], "Total runs"),
@@ -188,8 +188,8 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
         (metrics.get("stalled", 0), "Stalled"),
         (metrics.get("needs_attention", 0), "Needs attention"),
         (metrics["pr_count"], "PRs opened"),
-        (metrics["succeeded"], "Succeeded"),
-        (f"{sr:.0f}%", "Success rate"),
+        (f"{rr:.0f}%", "Remediation rate"),
+        (metrics["succeeded"], "Verified pass"),
         (f"{cpf} ACU" if cpf is not None else "—", "Cost / fix"),
     ]
     detail_breakdown = metrics.get("in_flight_detail") or {}

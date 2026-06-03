@@ -123,9 +123,10 @@ def render_summary_md(db: Session, path: str, *, repo: str = "", stall_seconds: 
     lines.append("")
     lines.append("## Headline metrics")
     lines.append("")
-    lines.append(f"- **Success rate (of completed):** {pct(m['success_rate'])} "
+    lines.append(f"- **Remediation rate (PR opened):** {pct(m['pr_rate'])} "
+                 f"({m['pr_count']}/{m['total_runs']})")
+    lines.append(f"- **Verified pass (of completed):** {pct(m['success_rate'])} "
                  f"({m['succeeded']}/{m['terminal']})")
-    lines.append(f"- **PR conversion:** {pct(m['pr_rate'])} ({m['pr_count']}/{m['total_runs']})")
     if m["median_duration_seconds"] is not None:
         lines.append(f"- **Median time-to-completion:** {m['median_duration_seconds']}s")
     if m["avg_duration_seconds"] is not None:

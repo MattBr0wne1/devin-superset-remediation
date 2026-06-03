@@ -40,7 +40,7 @@ def test_render_summary_md(settings, session_factory, tmp_path):
     with session_factory() as db:
         text = render_summary_md(db, path, repo="MattBr0wne1/superset")
     assert "# Remediation Report" in text
-    assert "Success rate" in text
+    assert "Remediation rate" in text and "Verified pass" in text
     assert "#1" in text and "#2" in text
     with open(path) as fh:
         assert fh.read() == text
