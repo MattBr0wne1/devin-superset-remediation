@@ -127,6 +127,14 @@ broker, no external DB, trivial to run in one container and inspect. Trade-off:
 single-instance only (dispatch idempotency and state are local); horizontal
 scaling would require a shared DB. Documented rather than over-engineered.
 
+**Schema management:** the table is created with SQLAlchemy `create_all` at
+startup — no migration framework. This is intentional for the scope: a fresh
+volume always gets the current schema. The caveat is that adding a column later
+does **not** ALTER a pre-existing database file; on the rare schema change you
+recreate the volume (run history is observability data, not a system of record).
+A tool like Alembic would be the upgrade path if the store ever needed to
+preserve history across schema changes.
+
 ## 11. Idempotency
 
 **Decision:** `issue_number` is unique; a repeated label event returns the

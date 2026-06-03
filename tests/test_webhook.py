@@ -81,6 +81,16 @@ def test_metrics_and_runs_endpoints(settings, session_factory, fake_devin, fake_
     assert client.get("/dashboard").status_code == 200
 
 
+def test_dashboard_escapes_issue_title(settings, session_factory, fake_devin, fake_github):
+    client = _client(settings, session_factory, fake_devin, fake_github)
+    payload = _issue_payload(number=5)
+    payload["issue"]["title"] = "<script>alert(1)</script>"
+    client.post("/webhooks/github-issue", json=payload, headers={"X-GitHub-Event": "issues"})
+    html_body = client.get("/dashboard").text
+    assert "<script>alert(1)</script>" not in html_body
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_body
+
+
 def test_verify_signature_skips_when_no_secret():
     assert verify_github_signature(b"x", None, "") is True
     assert verify_github_signature(b"x", "sha256=bad", "s") is False

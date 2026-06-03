@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -142,8 +143,10 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
     """Render a dependency-light HTML dashboard."""
     rows = []
     for r in runs:
-        pr = f'<a href="{r["pr_url"]}">PR</a>' if r["pr_url"] else "—"
-        sess = f'<a href="{r["session_url"]}">session</a>' if r["session_url"] else "—"
+        pr_url = html.escape(r["pr_url"], quote=True) if r["pr_url"] else ""
+        sess_url = html.escape(r["session_url"], quote=True) if r["session_url"] else ""
+        pr = f'<a href="{pr_url}">PR</a>' if r["pr_url"] else "—"
+        sess = f'<a href="{sess_url}">session</a>' if r["session_url"] else "—"
         dur = f'{r["duration_seconds"]:.0f}s' if r["duration_seconds"] is not None else "—"
         acus = r["acus_consumed"] if r["acus_consumed"] is not None else "—"
         badge = {
@@ -161,21 +164,24 @@ def _render_dashboard(metrics: dict[str, Any], runs: list[dict[str, Any]],
             stalled = (r["status"] == "running" and not r["pr_url"]
                        and age0 is not None and age0 > settings.stall_seconds)
             attn = detail in ("waiting_for_user", "waiting_for_approval")
+            detail_safe = html.escape(detail)
             if stalled:
                 detail_cell = '<span style="color:#cf222e;font-weight:600">stalled</span>'
             elif attn:
-                detail_cell = f'<span style="color:#bf8700;font-weight:600">{detail}</span>'
+                detail_cell = f'<span style="color:#bf8700;font-weight:600">{detail_safe}</span>'
             else:
-                detail_cell = detail
+                detail_cell = detail_safe
         age = r.get("seconds_since_update")
         last = f"{age:.0f}s ago" if age is not None else "—"
+        title_safe = html.escape(r["issue_title"] or "")
+        verdict_safe = html.escape(r["verdict"]) if r["verdict"] else "—"
         rows.append(
             f"<tr><td>#{r['issue_number']}</td>"
-            f"<td>{r['issue_title']}</td>"
+            f"<td>{title_safe}</td>"
             f'<td><span style="background:{badge};color:#fff;padding:2px 8px;'
             f'border-radius:10px;font-size:12px">{status_label}</span></td>'
             f"<td>{detail_cell}</td><td>{last}</td>"
-            f"<td>{r['verdict'] or '—'}</td><td>{pr}</td><td>{acus}</td>"
+            f"<td>{verdict_safe}</td><td>{pr}</td><td>{acus}</td>"
             f"<td>{dur}</td><td>{sess}</td></tr>"
         )
     table = "\n".join(rows) or '<tr><td colspan="10">No runs yet</td></tr>'
